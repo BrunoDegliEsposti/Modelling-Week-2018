@@ -1,0 +1,196 @@
+-- FreeFem++ v  4.100000 (date mar.  9 avr. 2019 13:55:28)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : // generate spur gear
+    2 :
+    3 : load "msh3"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\msh3 = 0)
+    4 : load "tetgen"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\tetgen = 0) load: tetgen
+ 
+    5 : load "medit"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\medit = 0)
+    6 :
+    7 : //The gear radius (cm)
+    8 : real radius = 0.2;
+    9 : int numteeth = 20;// number of teeth
+   10 : real toothheight = radius/8.;
+   11 :
+   12 : // Gap factor between the coil and the gear: 1.05
+   13 : real separationfactor = 1.05;
+   14 :
+   15 : //The inner gear cylinder has
+   16 : //radius = radiusportion*radius
+   17 : real radiusportion = 0.7;
+   18 :
+   19 : //Outer radius factor for the coil
+   20 : //real fradiusextcoil = 20.;
+   21 : real fradiusextcoil = 8.;
+   22 :
+   23 : // Half of the gear thickness (cm)
+   24 : real thickness = 0.04;
+   25 :
+   26 : //Number of points in the tooth boundary
+   27 : int npteeth = 350;
+   28 :
+   29 : // Number of points in the inner ring
+   30 : int npinnerring = 30;
+   31 :
+   32 : //Number of points in the two arcs of the coil
+   33 : int npacoil = 120;
+   34 :
+   35 : //Number of layers in the 3D mesh of the gear and coil
+   36 : int nlayer = 7;
+   37 :
+   38 : // Truncated teeth by 20% up and down
+   39 : func real tooth(real t){return
+   40 :     min(0.8*toothheight,
+   41 :      max(-0.8*toothheight,
+   42 : //      toothheight*cos(numteeth*t+pi)));}
+   43 :       toothheight*cos(numteeth*t)));}
+   44 :
+   45 : func real coronax(real t){return
+   46 :        (radius + tooth(t))*cos(t);}
+   47 : func real coronay(real t){return
+   48 :        (radius + tooth(t))*sin(t);}
+   49 :
+   50 : border dentadura(t=0,2*pi){
+   51 :         x=coronax(t);
+   52 :         y=coronay(t);label=123;}
+   53 : border circle1(t=0,2*pi){
+   54 :         x=radiusportion*radius*cos(t);
+   55 :     y=radiusportion*radius*sin(t);}
+   56 :
+   57 : //plot(dentadura(npteeth) + circle1(npinnerring));
+   58 :
+   59 : mesh Th=buildmesh(dentadura(npteeth) +
+   60 :            circle1(-npinnerring),fixeborder=1);
+   61 :
+   62 : //plot(Th,ps="gearbase.eps");
+   63 :
+   64 : int[int] labels = [0,76];
+ *** Warning  The identifier labels hide a Global identifier
+ 
+   65 : mesh3 Thbase = movemesh23(Th,
+   66 :        transfo=[x,y,-thickness],
+   67 :        label=labels);
+   68 : labels = [0,77];
+   69 : mesh3 Thtapa = movemesh23(Th,
+   70 :        transfo=[x,y,thickness],
+   71 :        label=labels);
+   72 :
+   73 : //Inner wall
+   74 : real x0=0., x1=2.*pi,
+   75 :      y0=-thickness,
+ *** Warning  The identifier y0 hide a Global identifier
+ y1=thickness;
+ *** Warning  The identifier y1 hide a Global identifier
+ 
+   76 : mesh Thauxi =
+   77 :       square(npinnerring,nlayer,
+   78 :       [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+   79 : func XX3 = radiusportion*radius*cos(x);
+   80 : func YY3 = radiusportion*radius*sin(x);
+   81 : func ZZ2 = y;
+   82 : labels = [0,79];
+   83 : mesh3 Thlaterali = movemesh23(Thauxi,
+   84 :     transfo=[XX3,YY3,ZZ2],
+   85 :     label=labels);
+   86 :
+   87 : mesh3 Thprogress = Thbase + Thlaterali + Thtapa;
+   88 : //savemesh(Thprogress,"boundaryprogress.mesh");
+   89 :
+   90 : // Interactive call for MEdit
+   91 : //medit("Boundary progress", Thprogress);
+   92 :
+   93 : // Cylindrical Wall on the teeth
+   94 : mesh Thauxe =
+   95 :   square(npteeth,nlayer,
+   96 :    [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+   97 : func XX4 = coronax(x);
+   98 : func YY4 = coronay(x);
+   99 : labels = [0,78];
+  100 : mesh3 Thlateralo =
+  101 :    movemesh23(Thauxe,
+  102 :     transfo=[XX4,YY4,y],
+  103 :     label=labels);
+  104 : //savemesh(Thlateralo,"toothwall-2019.mesh");
+  105 : //medit("Toothwall", Thlateralo);
+  106 :
+  107 : //The full gear skin
+  108 : mesh3 GearSkin =
+  109 :     Thbase + Thtapa
+  110 :     + Thlaterali + Thlateralo;
+  111 : savemesh(GearSkin,"gearskin-2019.mesh");
+  112 :
+  113 : //3D gear mesh (tetrahedra)
+  114 : real[int] domain =
+  115 :   [1.05*radiusportion*radius,
+  116 :     0.,0.,145,0.1];
+  117 : mesh3 ThGear3 =
+  118 :   tetg(GearSkin,
+  119 :    switch="paAAQY",
+  120 :    nbofregions=1,
+  121 :    regionlist=domain);
+  122 :
+  123 : //savemesh(ThGear3,"spur-gear-2019.mesh");
+  124 :
+  125 : //The helical twist
+  126 : func XX5 =  cos(2*z)*x + sin(2*z)*y;
+  127 : func YY5 = -sin(2*z)*x + cos(2*z)*y;
+  128 :
+  129 : mesh3 ThGear =
+  130 :   movemesh3(ThGear3,
+  131 :     transfo=[XX5,YY5,z]);
+  132 :
+  133 : medit("Helical Gear", ThGear);
+  134 :
+  135 : savemesh(ThGear,"gear-2019.mesh"); // We save the meshÿ sizestack + 1024 =3192  ( 2168 )
+ 
+  --  mesh:  Nb of Triangles =   1518, Nb of Vertices 949
+After movemesh::Vertex  triangle  border 949 1518 380
+After movemesh::Vertex  triangle  border 949 1518 380
+  -- Square mesh : nb vertices  =248 ,  nb triangles = 420 ,  nb boundary edges 74
+After movemesh::Vertex  triangle  border 240 420 67
+  -- Square mesh : nb vertices  =2808 ,  nb triangles = 4900 ,  nb boundary edges 714
+After movemesh::Vertex  triangle  border 2800 4900 707
+Tetgen : Vertex Triangle Border 4178  0 nbe 8356
+stringpaAAQY
+charpaAAQY
+3D RemplissageSurf3D:: Vertex  triangle2  border 4178 0 8356
+ tetgenio: vertex
+ tetgenio: facet
+tetgen: before tetrahedralize( , &in, &out);
+numberof regions 1
+numberof hole 0
+tetgen: after tetrahedralize( , &in, &out);
+Th3 :: Vertex Element Border :: 5092 17717 8356
+FreeFem++: Check mesh given by tetgen
+ Finish Mesh3 tetgen :: Vertex, Element, Border5092 17717 8356
+FreeFem++: End check mesh given by tetgen
+finish tetgen
+action sur le maillage
+FreeFem++: End check mesh given by tetgen
+version de medit ffmedit.exe -popen -filebin 1  Helical
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es)
+mesh_name= Helical
+ Loading data file(s)
+End of mesh
+  Input seconds:     0.01
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.14
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  1.59
+ Thank you for using Medit.
+times: compile 0.208s, execution 2.909s,  mpirank:0
+ ######## We forget of deleting   -57 Nb pointer,   0Bytes  ,  mpirank 0, memory leak =0
+ CodeAlloc : nb ptr  3408,  size :427672 mpirank: 0
+Ok: Normal End
+ try getConsole C:\Users\Bruno\Desktop\Modelling Week\FreeFem++\spur-gear2.edp

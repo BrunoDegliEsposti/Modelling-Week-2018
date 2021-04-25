@@ -1,0 +1,673 @@
+-- FreeFem++ v  4.100000 (date mar.  9 avr. 2019 13:55:28)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue 
+    1 : // Heat equation with advection term
+    2 :
+    3 : border Gamma1(t = pi-pi/4,pi+pi/4) {x=cos(t);y=sin(t);label=1;}
+    4 : border Gamma2(t = pi+pi/4,3*pi-pi/4) {x=cos(t);y=sin(t);label=2;}
+    5 : border Gamma3(t = 0,2*pi) {x=0.3*cos(t);y=0.2*sin(t);}
+    6 : mesh Th = buildmesh(Gamma1(10)+Gamma2(40)+Gamma3(50));
+    7 : plot(Th);
+    8 : fespace Xh2(Th, P2); //Lagrange P2 elements
+    9 : fespace Xh0(Th, P0); //Lagrange P0 elements (piecewise constant)
+   10 : Xh0 kh;
+   11 : Xh2 uh2, vh2, wh2, F, G, H;
+   12 :
+   13 : func real f(real xx, real yy, real t) {
+   14 :         return 30*(xx^2+yy^2);
+   15 : }
+   16 : func real g(real xx, real yy, real t) {
+   17 :         return 273.15+100*t^2.0;
+   18 : }
+   19 : func real h(real xx, real yy, real t) {
+   20 :         return 0.0;
+   21 : }
+   22 : func uinitial = 273.15;
+   23 :
+   24 : real Tfinal = 3;
+   25 : int Mparts = 10000;
+   26 : real deltat = Tfinal/Mparts;
+   27 : real deltat2 = 0.5*deltat;
+   28 :
+   29 : int Omega1=Th(0.9,0).region, Omega2=Th(0,0).region;
+   30 : real k1diffusion = 10.0;
+   31 : real k2diffusion = 0.1;
+   32 : func kdiffusion = (region==Omega1)*k1diffusion + (region==Omega2)*k2diffusion;
+   33 :
+   34 : kh = kdiffusion;
+   35 : plot(kh,wait=1);
+   36 : uh2 = uinitial;
+   37 : real a1=2.0; real a2=1.0; // (a1,a2) is the advection field
+   38 :
+   39 : plot(uh2,wait=0,fill=1,cmm="Initial condition",value=1);
+   40 :
+   41 : problem heat(wh2,vh2) = int2d(Th)(wh2*vh2)
+   42 :                       + int2d(Th)(deltat2*kh*(dx(wh2)*dx(vh2)+dy(wh2)*dy(vh2)))
+   43 :                       + int2d(Th)(deltat2*(a1*dx(wh2)+a2*dy(wh2))*vh2)
+   44 :                       - int2d(Th)(F*vh2)
+   45 :                       - int1d(Th,Gamma2)(deltat2*kh*H*vh2)
+   46 :                       + on(Gamma1,wh2=G);Problem : ----------------------------- 1304 dim = 2 0x41db7e0
+ 
+   47 :
+   48 : for (int j = 0; j < Mparts; j++) {
+   49 :         real time = j*deltat;
+ *** Warning  The identifier time hide a Global identifier
+ 
+   50 :         F = deltat2*0.5*(f(x,y,time)+f(x,y,time+deltat)) + uh2;
+   51 :         G = 0.5*(g(x,y,time)+g(x,y,time+deltat));
+   52 :         H = 0.5*(h(x,y,time)+h(x,y,time+deltat));
+   53 :         heat;
+   54 :         uh2 = 2*wh2-uh2;
+   55 :         plot(uh2,wait=1,fill=1,cmm="Heat problem: "+"t= "+(time+deltat),value=1);
+   56 : }
+   57 :  sizestack + 1024 =5840  ( 4816 )
+ 
+  --  mesh:  Nb of Triangles =   1492, Nb of Vertices 772
+  -- Solve :
+          min 273.15  max 273.154
+  -- Solve :
+          min 273.15  max 273.162
+  -- Solve :
+          min 273.15  max 273.17
+  -- Solve :
+          min 273.15  max 273.177
+  -- Solve :
+          min 273.15  max 273.184
+  -- Solve :
+          min 273.15  max 273.191
+  -- Solve :
+          min 273.15  max 273.198
+  -- Solve :
+          min 273.15  max 273.204
+  -- Solve :
+          min 273.15  max 273.211
+  -- Solve :
+          min 273.15  max 273.217
+  -- Solve :
+          min 273.15  max 273.224
+  -- Solve :
+          min 273.15  max 273.23
+  -- Solve :
+          min 273.15  max 273.236
+  -- Solve :
+          min 273.15  max 273.242
+  -- Solve :
+          min 273.15  max 273.248
+  -- Solve :
+          min 273.15  max 273.254
+  -- Solve :
+          min 273.15  max 273.259
+  -- Solve :
+          min 273.15  max 273.265
+  -- Solve :
+          min 273.15  max 273.271
+  -- Solve :
+          min 273.15  max 273.276
+  -- Solve :
+          min 273.15  max 273.282
+  -- Solve :
+          min 273.15  max 273.287
+  -- Solve :
+          min 273.15  max 273.293
+  -- Solve :
+          min 273.15  max 273.298
+  -- Solve :
+          min 273.15  max 273.304
+  -- Solve :
+          min 273.15  max 273.309
+  -- Solve :
+          min 273.15  max 273.314
+  -- Solve :
+          min 273.15  max 273.319
+  -- Solve :
+          min 273.15  max 273.325
+  -- Solve :
+          min 273.15  max 273.33
+  -- Solve :
+          min 273.151  max 273.335
+  -- Solve :
+          min 273.151  max 273.34
+  -- Solve :
+          min 273.151  max 273.345
+  -- Solve :
+          min 273.151  max 273.35
+  -- Solve :
+          min 273.151  max 273.355
+  -- Solve :
+          min 273.151  max 273.36
+  -- Solve :
+          min 273.151  max 273.365
+  -- Solve :
+          min 273.151  max 273.37
+  -- Solve :
+          min 273.151  max 273.375
+  -- Solve :
+          min 273.151  max 273.38
+  -- Solve :
+          min 273.151  max 273.385
+  -- Solve :
+          min 273.151  max 273.39
+  -- Solve :
+          min 273.151  max 273.395
+  -- Solve :
+          min 273.151  max 273.4
+  -- Solve :
+          min 273.151  max 273.405
+  -- Solve :
+          min 273.151  max 273.409
+  -- Solve :
+          min 273.151  max 273.414
+  -- Solve :
+          min 273.151  max 273.419
+  -- Solve :
+          min 273.151  max 273.424
+  -- Solve :
+          min 273.151  max 273.429
+  -- Solve :
+          min 273.151  max 273.433
+  -- Solve :
+          min 273.152  max 273.438
+  -- Solve :
+          min 273.152  max 273.443
+  -- Solve :
+          min 273.152  max 273.448
+  -- Solve :
+          min 273.152  max 273.452
+  -- Solve :
+          min 273.152  max 273.457
+  -- Solve :
+          min 273.152  max 273.462
+  -- Solve :
+          min 273.152  max 273.466
+  -- Solve :
+          min 273.152  max 273.471
+  -- Solve :
+          min 273.152  max 273.476
+  -- Solve :
+          min 273.152  max 273.481
+  -- Solve :
+          min 273.152  max 273.485
+  -- Solve :
+          min 273.152  max 273.49
+  -- Solve :
+          min 273.152  max 273.495
+  -- Solve :
+          min 273.152  max 273.499
+  -- Solve :
+          min 273.153  max 273.504
+  -- Solve :
+          min 273.153  max 273.508
+  -- Solve :
+          min 273.153  max 273.513
+  -- Solve :
+          min 273.153  max 273.518
+  -- Solve :
+          min 273.153  max 273.522
+  -- Solve :
+          min 273.153  max 273.527
+  -- Solve :
+          min 273.153  max 273.531
+  -- Solve :
+          min 273.153  max 273.536
+  -- Solve :
+          min 273.153  max 273.541
+  -- Solve :
+          min 273.153  max 273.545
+  -- Solve :
+          min 273.153  max 273.55
+  -- Solve :
+          min 273.154  max 273.554
+  -- Solve :
+          min 273.154  max 273.559
+  -- Solve :
+          min 273.154  max 273.564
+  -- Solve :
+          min 273.154  max 273.568
+  -- Solve :
+          min 273.154  max 273.573
+  -- Solve :
+          min 273.154  max 273.577
+  -- Solve :
+          min 273.154  max 273.582
+  -- Solve :
+          min 273.154  max 273.586
+  -- Solve :
+          min 273.154  max 273.591
+  -- Solve :
+          min 273.155  max 273.595
+  -- Solve :
+          min 273.155  max 273.6
+  -- Solve :
+          min 273.155  max 273.604
+  -- Solve :
+          min 273.155  max 273.609
+  -- Solve :
+          min 273.155  max 273.613
+  -- Solve :
+          min 273.155  max 273.618
+  -- Solve :
+          min 273.155  max 273.622
+  -- Solve :
+          min 273.156  max 273.627
+  -- Solve :
+          min 273.156  max 273.631
+  -- Solve :
+          min 273.156  max 273.636
+  -- Solve :
+          min 273.156  max 273.64
+  -- Solve :
+          min 273.156  max 273.644
+  -- Solve :
+          min 273.156  max 273.649
+  -- Solve :
+          min 273.156  max 273.653
+  -- Solve :
+          min 273.157  max 273.658
+  -- Solve :
+          min 273.157  max 273.662
+  -- Solve :
+          min 273.157  max 273.667
+  -- Solve :
+          min 273.157  max 273.671
+  -- Solve :
+          min 273.157  max 273.675
+  -- Solve :
+          min 273.158  max 273.68
+  -- Solve :
+          min 273.158  max 273.684
+  -- Solve :
+          min 273.158  max 273.689
+  -- Solve :
+          min 273.158  max 273.693
+  -- Solve :
+          min 273.158  max 273.697
+  -- Solve :
+          min 273.159  max 273.702
+  -- Solve :
+          min 273.159  max 273.706
+  -- Solve :
+          min 273.159  max 273.71
+  -- Solve :
+          min 273.159  max 273.715
+  -- Solve :
+          min 273.159  max 273.719
+  -- Solve :
+          min 273.16  max 273.723
+  -- Solve :
+          min 273.16  max 273.728
+  -- Solve :
+          min 273.16  max 273.732
+  -- Solve :
+          min 273.16  max 273.736
+  -- Solve :
+          min 273.161  max 273.74
+  -- Solve :
+          min 273.161  max 273.745
+  -- Solve :
+          min 273.161  max 273.749
+  -- Solve :
+          min 273.161  max 273.753
+  -- Solve :
+          min 273.162  max 273.758
+  -- Solve :
+          min 273.162  max 273.762
+  -- Solve :
+          min 273.162  max 273.766
+  -- Solve :
+          min 273.163  max 273.77
+  -- Solve :
+          min 273.163  max 273.775
+  -- Solve :
+          min 273.163  max 273.779
+  -- Solve :
+          min 273.164  max 273.783
+  -- Solve :
+          min 273.164  max 273.787
+  -- Solve :
+          min 273.164  max 273.791
+  -- Solve :
+          min 273.165  max 273.796
+  -- Solve :
+          min 273.165  max 273.8
+  -- Solve :
+          min 273.165  max 273.804
+  -- Solve :
+          min 273.166  max 273.808
+  -- Solve :
+          min 273.166  max 273.812
+  -- Solve :
+          min 273.166  max 273.817
+  -- Solve :
+          min 273.167  max 273.821
+  -- Solve :
+          min 273.167  max 273.825
+  -- Solve :
+          min 273.167  max 273.829
+  -- Solve :
+          min 273.168  max 273.833
+  -- Solve :
+          min 273.168  max 273.837
+  -- Solve :
+          min 273.169  max 273.841
+  -- Solve :
+          min 273.169  max 273.845
+  -- Solve :
+          min 273.17  max 273.85
+  -- Solve :
+          min 273.17  max 273.854
+  -- Solve :
+          min 273.17  max 273.858
+  -- Solve :
+          min 273.171  max 273.862
+  -- Solve :
+          min 273.171  max 273.866
+  -- Solve :
+          min 273.172  max 273.87
+  -- Solve :
+          min 273.172  max 273.874
+  -- Solve :
+          min 273.173  max 273.878
+  -- Solve :
+          min 273.173  max 273.882
+  -- Solve :
+          min 273.173  max 273.886
+  -- Solve :
+          min 273.174  max 273.89
+  -- Solve :
+          min 273.174  max 273.894
+  -- Solve :
+          min 273.175  max 273.898
+  -- Solve :
+          min 273.175  max 273.902
+  -- Solve :
+          min 273.176  max 273.906
+  -- Solve :
+          min 273.176  max 273.91
+  -- Solve :
+          min 273.177  max 273.914
+  -- Solve :
+          min 273.177  max 273.918
+  -- Solve :
+          min 273.178  max 273.922
+  -- Solve :
+          min 273.178  max 273.926
+  -- Solve :
+          min 273.179  max 273.93
+  -- Solve :
+          min 273.179  max 273.934
+  -- Solve :
+          min 273.18  max 273.938
+  -- Solve :
+          min 273.181  max 273.942
+  -- Solve :
+          min 273.181  max 273.946
+  -- Solve :
+          min 273.182  max 273.95
+  -- Solve :
+          min 273.182  max 273.954
+  -- Solve :
+          min 273.183  max 273.958
+  -- Solve :
+          min 273.183  max 273.962
+  -- Solve :
+          min 273.184  max 273.965
+  -- Solve :
+          min 273.185  max 273.969
+  -- Solve :
+          min 273.185  max 273.973
+  -- Solve :
+          min 273.186  max 273.977
+  -- Solve :
+          min 273.186  max 273.981
+  -- Solve :
+          min 273.187  max 273.985
+  -- Solve :
+          min 273.188  max 273.989
+  -- Solve :
+          min 273.188  max 273.993
+  -- Solve :
+          min 273.189  max 273.996
+  -- Solve :
+          min 273.19  max 274
+  -- Solve :
+          min 273.19  max 274.004
+  -- Solve :
+          min 273.191  max 274.008
+  -- Solve :
+          min 273.192  max 274.012
+  -- Solve :
+          min 273.192  max 274.016
+  -- Solve :
+          min 273.193  max 274.019
+  -- Solve :
+          min 273.194  max 274.023
+  -- Solve :
+          min 273.194  max 274.027
+  -- Solve :
+          min 273.195  max 274.031
+  -- Solve :
+          min 273.196  max 274.035
+  -- Solve :
+          min 273.197  max 274.038
+  -- Solve :
+          min 273.197  max 274.042
+  -- Solve :
+          min 273.198  max 274.046
+  -- Solve :
+          min 273.199  max 274.05
+  -- Solve :
+          min 273.2  max 274.054
+  -- Solve :
+          min 273.2  max 274.057
+  -- Solve :
+          min 273.201  max 274.061
+  -- Solve :
+          min 273.202  max 274.065
+  -- Solve :
+          min 273.203  max 274.069
+  -- Solve :
+          min 273.204  max 274.072
+  -- Solve :
+          min 273.204  max 274.076
+  -- Solve :
+          min 273.205  max 274.08
+  -- Solve :
+          min 273.206  max 274.084
+  -- Solve :
+          min 273.207  max 274.087
+  -- Solve :
+          min 273.208  max 274.091
+  -- Solve :
+          min 273.209  max 274.095
+  -- Solve :
+          min 273.21  max 274.098
+  -- Solve :
+          min 273.21  max 274.102
+  -- Solve :
+          min 273.211  max 274.106
+  -- Solve :
+          min 273.212  max 274.109
+  -- Solve :
+          min 273.213  max 274.113
+  -- Solve :
+          min 273.214  max 274.117
+  -- Solve :
+          min 273.215  max 274.12
+  -- Solve :
+          min 273.216  max 274.124
+  -- Solve :
+          min 273.217  max 274.128
+  -- Solve :
+          min 273.218  max 274.131
+  -- Solve :
+          min 273.219  max 274.135
+  -- Solve :
+          min 273.22  max 274.139
+  -- Solve :
+          min 273.221  max 274.142
+  -- Solve :
+          min 273.221  max 274.146
+  -- Solve :
+          min 273.222  max 274.15
+  -- Solve :
+          min 273.223  max 274.153
+  -- Solve :
+          min 273.224  max 274.157
+  -- Solve :
+          min 273.225  max 274.161
+  -- Solve :
+          min 273.226  max 274.164
+  -- Solve :
+          min 273.227  max 274.168
+  -- Solve :
+          min 273.228  max 274.171
+  -- Solve :
+          min 273.229  max 274.175
+  -- Solve :
+          min 273.23  max 274.179
+  -- Solve :
+          min 273.231  max 274.182
+  -- Solve :
+          min 273.232  max 274.186
+  -- Solve :
+          min 273.233  max 274.189
+  -- Solve :
+          min 273.234  max 274.193
+  -- Solve :
+          min 273.235  max 274.197
+  -- Solve :
+          min 273.237  max 274.2
+  -- Solve :
+          min 273.238  max 274.204
+  -- Solve :
+          min 273.239  max 274.207
+  -- Solve :
+          min 273.24  max 274.211
+  -- Solve :
+          min 273.241  max 274.215
+  -- Solve :
+          min 273.242  max 274.218
+  -- Solve :
+          min 273.243  max 274.222
+  -- Solve :
+          min 273.244  max 274.225
+  -- Solve :
+          min 273.245  max 274.229
+  -- Solve :
+          min 273.246  max 274.232
+  -- Solve :
+          min 273.247  max 274.236
+  -- Solve :
+          min 273.249  max 274.239
+  -- Solve :
+          min 273.25  max 274.243
+  -- Solve :
+          min 273.251  max 274.246
+  -- Solve :
+          min 273.252  max 274.25
+  -- Solve :
+          min 273.253  max 274.254
+  -- Solve :
+          min 273.254  max 274.257
+  -- Solve :
+          min 273.255  max 274.261
+  -- Solve :
+          min 273.257  max 274.264
+  -- Solve :
+          min 273.258  max 274.268
+  -- Solve :
+          min 273.259  max 274.271
+  -- Solve :
+          min 273.26  max 274.275
+  -- Solve :
+          min 273.261  max 274.278
+  -- Solve :
+          min 273.263  max 274.282
+  -- Solve :
+          min 273.264  max 274.285
+  -- Solve :
+          min 273.265  max 274.289
+  -- Solve :
+          min 273.266  max 274.292
+  -- Solve :
+          min 273.267  max 274.296
+  -- Solve :
+          min 273.269  max 274.299
+  -- Solve :
+          min 273.27  max 274.303
+  -- Solve :
+          min 273.271  max 274.306
+  -- Solve :
+          min 273.272  max 274.31
+  -- Solve :
+          min 273.274  max 274.313
+  -- Solve :
+          min 273.275  max 274.317
+  -- Solve :
+          min 273.276  max 274.32
+  -- Solve :
+          min 273.278  max 274.324
+  -- Solve :
+          min 273.279  max 274.327
+  -- Solve :
+          min 273.28  max 274.331
+  -- Solve :
+          min 273.281  max 274.334
+  -- Solve :
+          min 273.283  max 274.338
+  -- Solve :
+          min 273.284  max 274.341
+  -- Solve :
+          min 273.285  max 274.345
+  -- Solve :
+          min 273.287  max 274.348
+  -- Solve :
+          min 273.288  max 274.351
+  -- Solve :
+          min 273.289  max 274.355
+  -- Solve :
+          min 273.291  max 274.358
+  -- Solve :
+          min 273.292  max 274.362
+  -- Solve :
+          min 273.294  max 274.365
+  -- Solve :
+          min 273.295  max 274.369
+  -- Solve :
+          min 273.296  max 274.372
+  -- Solve :
+          min 273.298  max 274.376
+  -- Solve :
+          min 273.299  max 274.379
+  -- Solve :
+          min 273.301  max 274.383
+  -- Solve :
+          min 273.302  max 274.386
+  -- Solve :
+          min 273.303  max 274.39
+  -- Solve :
+          min 273.305  max 274.393
+  -- Solve :
+          min 273.306  max 274.396
+  -- Solve :
+          min 273.308  max 274.4
+  -- Solve :
+          min 273.309  max 274.403
+  -- Solve :
+          min 273.311  max 274.407
+  -- Solve :
+          min 273.312  max 274.41
+  -- Solve :
+          min 273.314  max 274.414
+  -- Solve :
+          min 273.315  max 274.417
+  -- Solve :
+          min 273.317  max 274.421
+  -- Solve :
+          min 273.318  max 274.424
+  -- Solve :
+          min 273.32  max 274.427
+  -- Solve :
+          min 273.321  max 274.431
+  -- Solve :
+          min 273.323  max 274.434
+^C try getConsole C:\Users\Bruno\Desktop\Modelling Week\FreeFem++\example_heat.edp

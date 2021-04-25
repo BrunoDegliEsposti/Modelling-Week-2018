@@ -1,0 +1,275 @@
+-- FreeFem++ v  4.100000 (date mar.  9 avr. 2019 13:55:28)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : // mesh generation: gear, coil and surrounding air
+    2 : // https://www.youtube.com/watch?v=b8Ptfw39ea4
+    3 :
+    4 : load "msh3"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\msh3 = 0)
+    5 : load "tetgen"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\tetgen = 0) load: tetgen
+ 
+    6 : load "medit"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\medit = 0)
+    7 :
+    8 : //The gear radius (cm)
+    9 : real radius = 0.2;
+   10 : int numteeth = 20;// number of teeth
+   11 : real toothheight = radius/8.;
+   12 :
+   13 : // Gap factor between the coil and the gear: 1.05
+   14 : real separationfactor = 1.05;
+   15 :
+   16 : //The inner gear cylinder has
+   17 : //radius = radiusportion*radius
+   18 : real radiusportion = 0.7;
+   19 :
+   20 : //Outer radius factor for the coil
+   21 : //real fradiusextcoil = 20.;
+   22 : real fradiusextcoil = 8.;
+   23 :
+   24 : // Half of the gear thickness (cm)
+   25 : real thickness = 0.04;
+   26 :
+   27 : //Number of points in the tooth boundary
+   28 : int npteeth = 350;
+   29 :
+   30 : // Number of points in the inner ring
+   31 : int npinnerring = 30;
+   32 :
+   33 : //Number of points in the two arcs of the coil
+   34 : int npacoil = 120;
+   35 :
+   36 : //Number of layers in the 3D mesh of the gear and coil
+   37 : int nlayer = 7;
+   38 :
+   39 : // Truncated teeth by 20% up and down
+   40 : func real tooth(real t){return
+   41 :     min(0.8*toothheight,
+   42 :      max(-0.8*toothheight,
+   43 : //      toothheight*cos(numteeth*t+pi)));}
+   44 :       toothheight*cos(numteeth*t)));}
+   45 :
+   46 : func real coronax(real t){return
+   47 :        (radius + tooth(t))*cos(t);}
+   48 : func real coronay(real t){return
+   49 :        (radius + tooth(t))*sin(t);}
+   50 :
+   51 : border dentadura(t=0,2*pi){
+   52 :         x=coronax(t);
+   53 :         y=coronay(t);label=123;}
+   54 : border circle1(t=0,2*pi){
+   55 :         x=radiusportion*radius*cos(t);
+   56 :     y=radiusportion*radius*sin(t);}
+   57 :
+   58 : //plot(dentadura(npteeth) + circle1(npinnerring));
+   59 :
+   60 : mesh Th=buildmesh(dentadura(npteeth) +
+   61 :            circle1(-npinnerring),fixeborder=1);
+   62 :
+   63 : //plot(Th,ps="gearbase.eps");
+   64 :
+   65 : int[int] labels = [0,76];
+ *** Warning  The identifier labels hide a Global identifier
+ 
+   66 : mesh3 Thbase = movemesh23(Th,
+   67 :        transfo=[x,y,-thickness],
+   68 :        label=labels);
+   69 : labels = [0,77];
+   70 : mesh3 Thtapa = movemesh23(Th,
+   71 :        transfo=[x,y,thickness],
+   72 :        label=labels);
+   73 :
+   74 : //Inner wall
+   75 : real x0=0., x1=2.*pi,
+   76 :      y0=-thickness,
+ *** Warning  The identifier y0 hide a Global identifier
+ y1=thickness;
+ *** Warning  The identifier y1 hide a Global identifier
+ 
+   77 : mesh Thauxi =
+   78 :       square(npinnerring,nlayer,
+   79 :       [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+   80 : func XX3 = radiusportion*radius*cos(x);
+   81 : func YY3 = radiusportion*radius*sin(x);
+   82 : func ZZ2 = y;
+   83 : labels = [0,79];
+   84 : mesh3 Thlaterali = movemesh23(Thauxi,
+   85 :     transfo=[XX3,YY3,ZZ2],
+   86 :     label=labels);
+   87 :
+   88 : //mesh3 Thprogress = Thbase + Thlaterali + Thtapa;
+   89 : //savemesh(Thprogress,"boundaryprogress.mesh");
+   90 :
+   91 : // Interactive call for MEdit
+   92 : //medit("Boundary progress", Thprogress);
+   93 :
+   94 : // Cylindrical Wall on the teeth
+   95 : mesh Thauxe =
+   96 :   square(npteeth,nlayer,
+   97 :    [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+   98 : func XX4 = coronax(x);
+   99 : func YY4 = coronay(x);
+  100 : labels = [0,78];
+  101 : mesh3 Thlateralo =
+  102 :    movemesh23(Thauxe,
+  103 :     transfo=[XX4,YY4,y],
+  104 :     label=labels);
+  105 : savemesh(Thlateralo,"toothwall-2019.mesh");
+  106 :
+  107 : //The full gear skin
+  108 : mesh3 GearSkin =
+  109 :     Thbase + Thtapa
+  110 :     + Thlaterali + Thlateralo;
+  111 : savemesh(GearSkin,"gearskin-2019.mesh");
+  112 :
+  113 : //3D gear mesh (tetrahedra)
+  114 : real[int] domain =
+  115 :   [1.05*radiusportion*radius,
+  116 :     0.,0.,145,0.1];
+  117 : mesh3 ThGear3 =
+  118 :   tetg(GearSkin,
+  119 :    switch="paAAQY",
+  120 :    nbofregions=1,
+  121 :    regionlist=domain);
+  122 :
+  123 : savemesh(ThGear3,"straightgear-2019.mesh");
+  124 :
+  125 : //The helical twist
+  126 : func XX5 =  cos(2*z)*x + sin(2*z)*y;
+  127 : func YY5 = -sin(2*z)*x + cos(2*z)*y;
+  128 :
+  129 : mesh3 ThGear =
+  130 :   movemesh3(ThGear3,
+  131 :     transfo=[XX5,YY5,z]);
+  132 :
+  133 : //medit("Helical Gear", ThGear);
+  134 :
+  135 : savemesh(ThGear,"gear-2019.mesh"); // We save the mesh
+  136 :
+  137 : //Inductor // Coil
+  138 : real estrechez=0.01; // Mitad del angulo de separacion de la apertura del inductor // Half of the gap angle
+  139 :
+  140 : real innercoilradius = separationfactor*(radius+toothheight);
+  141 : real outercoilradius = (separationfactor+fradiusextcoil*toothheight)*(radius+toothheight);
+  142 :
+  143 : x0= innercoilradius*cos(estrechez);
+  144 : y0= innercoilradius*sin(estrechez);
+  145 : x1= outercoilradius*cos(estrechez);
+  146 : y1= outercoilradius*sin(estrechez);
+  147 :
+  148 : real x2,y2,x3,y3;
+  149 : x2= innercoilradius*cos(2*pi-estrechez);
+  150 : y2= innercoilradius*sin(2*pi-estrechez);
+  151 : x3= outercoilradius*cos(2*pi-estrechez);
+  152 : y3= outercoilradius*sin(2*pi-estrechez);
+  153 :
+  154 : border coil1(t=0,1){x=(1-t)*x0+t*x1;y=(1-t)*y0+t*y1;label=35;};
+  155 : border outerarc(t=estrechez,2*pi-estrechez){x=outercoilradius*cos(t);y=outercoilradius*sin(t);}
+  156 :
+  157 : border coil2(t=0,1){x=(1-t)*x3+t*x2;y=(1-t)*y3+t*y2;label=85;};
+  158 : border innerarc(t=-estrechez,estrechez-2*pi){x=innercoilradius*cos(t);y=innercoilradius*sin(t);}
+  159 :
+  160 : // inner lines:
+  161 : border innerarcaux22(t=2*estrechez,2*pi-2*estrechez){x=(innercoilradius+outercoilradius)*0.5*cos(t);
+  162 :  y=(innercoilradius+outercoilradius)*0.5*sin(t);}
+  163 : border innerarcaux13(t=2*estrechez,2*pi-2*estrechez){x=(3*innercoilradius+outercoilradius)*0.25*cos(t);
+  164 :  y=(3*innercoilradius+outercoilradius)*0.25*sin(t);}
+  165 : border innerarcaux31(t=2*estrechez,2*pi-2*estrechez){x=(innercoilradius+3*outercoilradius)*0.25*cos(t);
+  166 :  y=(innercoilradius+3*outercoilradius)*0.25*sin(t);}
+  167 :
+  168 : mesh coilh=buildmesh(coil1(8)+outerarc(npacoil)+coil2(8)+innerarc(npacoil)
+  169 :  +innerarcaux13(npacoil)+innerarcaux22(npacoil)+innerarcaux31(npacoil));
+  170 :
+  171 : //plot(Th,coilh,wait=1);
+  172 :
+  173 : mesh3 coilh3=buildlayers(coilh, nlayer, zbound=[-1.2*thickness,1.2*thickness]);
+  174 : // medit("Coil",coilh3);
+  175 :
+  176 : savemesh(coilh3,"coil-2019.mesh");
+  177 :
+  178 : //////////////////////////////////
+  179 : //// Aire
+  180 : //////////////////////////////////
+  181 :
+  182 :  include "cubo.edp"func mesh3 Cube(int[int] & NN,real[int,int] &BB ,int[int,int] & L)
+    2 : {
+    3 : // first build the 6 faces of the hex.
+    4 : real x0=BB(0,0),x1=BB(0,1);
+    5 : real y0=BB(1,0),
+ *** Warning  The identifier y0 hide a Global identifier
+y1=BB(1,1);
+ *** Warning  The identifier y1 hide a Global identifier
+ 
+    6 : real z0=BB(2,0),z1=BB(2,1);
+    7 : int nx=NN[0],ny=NN[1],nz=NN[2];
+    8 : mesh Thx = square(nx,ny,[x0+(x1-x0)*x,y0+(y1-y0)*y]);
+    9 : int[int] rup=[0,L(2,1)], rdown=[0,L(2,0)],
+   10 : rmid=[1,L(1,0), 2,L(0,1), 3, L(1,1), 4, L(0,0) ];
+   11 : mesh3 Th=buildlayers(Thx,nz, zbound=[z0,z1],
+   12 : labelmid=rmid, labelup = rup,
+   13 : labeldown = rdown);
+   14 : return Th;
+   15 : }
+  183 :
+  184 : // int[int] NN=[7,7,7]; // the number of steps in each direction
+  185 :  int[int] NN=[10,10,10]; // the number of steps in each direction
+  186 : // real [int,int] BB=[[-0.6,0.6],[-0.6,0.6],[-0.6,0.6]]; // bounding box
+  187 :  real [int,int] BB=[[-2.2,2.2],[-2.2,2.2],[-2.2,2.2]]; // bounding box
+  188 :  int [int,int] L=[[10,20],[30,40],[50,60]]; // the label of the 6 faces left,right,
+  189 :  // front, back, down, right
+  190 :
+  191 :  mesh3 Thcube=Cube(NN,BB,L) + ThGear + coilh3;
+  192 :
+  193 :  //domain = [radio,0.,thickness,145,0.01,4,0.,0.,155,0.1];  // 145=corona, 155=aire
+  194 :  domain = [0.5*(radiusportion+1)*radius,0.,0.,145,0.001,0,0.5*(innercoilradius+outercoilradius),0,135,0.01,0.,0.Pž,0.,155,0.1]; // 135=inductor
+  195 : // domain = [radio2toro,0.,0.,135,0.04,1.05*porcionradio*radio,0.,0.,145,0.04,0.,0.,0.,155,0.2];
+  196 :  mesh3 Thcoilsteelair = tetg(Thcube,switch="paAAQY",nbofregions=3,regionlist=domain);
+  197 :
+  198 : savemesh(Thcoilsteelair,"coilsteelair-2019.mesh");
+  199 :  sizestack + 1024 =4504  ( 3480 )
+ 
+  --  mesh:  Nb of Triangles =   1518, Nb of Vertices 949
+After movemesh::Vertex  triangle  border 949 1518 380
+After movemesh::Vertex  triangle  border 949 1518 380
+  -- Square mesh : nb vertices  =248 ,  nb triangles = 420 ,  nb boundary edges 74
+After movemesh::Vertex  triangle  border 240 420 67
+  -- Square mesh : nb vertices  =2808 ,  nb triangles = 4900 ,  nb boundary edges 714
+After movemesh::Vertex  triangle  border 2800 4900 707
+Tetgen : Vertex Triangle Border 4178  0 nbe 8356
+stringpaAAQY
+charpaAAQY
+3D RemplissageSurf3D:: Vertex  triangle2  border 4178 0 8356
+ tetgenio: vertex
+ tetgenio: facet
+tetgen: before tetrahedralize( , &in, &out);
+numberof regions 1
+numberof hole 0
+tetgen: after tetrahedralize( , &in, &out);
+Th3 :: Vertex Element Border :: 5092 17717 8356
+FreeFem++: Check mesh given by tetgen
+ Finish Mesh3 tetgen :: Vertex, Element, Border5092 17717 8356
+FreeFem++: End check mesh given by tetgen
+finish tetgen
+action sur le maillage
+FreeFem++: End check mesh given by tetgen
+  --  mesh:  Nb of Triangles =    980, Nb of Vertices 619
+  -- Square mesh : nb vertices  =121 ,  nb triangles = 200 ,  nb boundary edges 40
+Tetgen : Vertex Triangle Border 11375  44297 nbe 20140
+stringpaAAQY
+charpaAAQY
+3D RemplissageSurf3D:: Vertex  triangle2  border 11375 44297 20140
+ tetgenio: vertex
+ tetgenio: facet
+tetgen: before tetrahedralize( , &in, &out);
+numberof regions 3
+numberof hole 0
+tetgen: after tetrahedralize( , &in, &out);
+Th3 :: Vertex Element Border :: 14265 85980 20140
+FreeFem++: Check mesh given by tetgen
+ Finish Mesh3 tetgen :: Vertex, Element, Border14265 85980 20140
+FreeFem++: End check mesh given by tetgen
+finish tetgen
+action sur le maillage
+FreeFem++: End check mesh given by tetgen
+times: compile 0.349s, execution 2.739s,  mpirank:0
+ ######## We forget of deleting   -63 Nb pointer,   0Bytes  ,  mpirank 0, memory leak =0
+ CodeAlloc : nb ptr  4018,  size :446776 mpirank: 0
+Ok: Normal End
+ try getConsole C:\Users\Bruno\Desktop\Modelling Week\FreeFem++\gear-coil-air-generation.edp

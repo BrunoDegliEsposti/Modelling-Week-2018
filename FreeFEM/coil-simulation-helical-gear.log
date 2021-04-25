@@ -1,0 +1,3403 @@
+-- FreeFem++ v  4.100000 (date mar.  9 avr. 2019 13:55:28)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : load "msh3"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\msh3 = 0)
+    2 : load "medit"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\medit = 0)
+    3 : include "WriteGmshFile.edp"/* ===================================================================== */
+    2 : /* Copyright (C) 2009, 2010 G. D. McBain -*- c++ -*-                     */
+    3 : /* Partially modified by J.M. DÃ­az, 2013  <josemanuel.diaz@uca.es>                               */
+    4 : /*                                                                       */
+    5 : /* Save a scalar solution in Gmsh .msh format.  The arguments are        */
+    6 : /* strings for the file and variable, the real array containing the      */
+    7 : /* variable (e.g. u[]), and the Gmsh element type (2 = TRI3, 4 = TET4,   */
+    8 : /* 9 = TRI6, 11 = TET10).                                                */
+    9 : /*                                                                       */
+   10 : /* Author: G. D. McBain <gdmcbain@freeshell.org>                         */
+   11 : /*                                                                       */
+   12 : /* Created: 2009-08-13?                                                  */
+   13 : /*                                                                       */
+   14 : /* Keywords: postprocessing, Gmsh                                        */
+   15 : /* ===================================================================== */
+   16 :
+   17 :
+   18 : /* ===================================================================== */
+   19 : /* GmshElmTyp() return the Gmsh element type number, inferred from the   */
+   20 : /*              number of degrees of freedom per element.                */
+   21 : /* ===================================================================== */
+   22 :
+   23 : func int GmshElmTyp (int n)
+   24 : {
+   25 :   int e;
+   26 :   if (n == 3)
+   27 :   {
+   28 :     e = 2;            // TRI3
+   29 :   }
+   30 :   else if (n == 4)
+   31 :   {
+   32 :     e = 4;            // TET4
+   33 :   }
+   34 :   else if (n == 6)
+   35 :   {
+   36 :     e = 9;            // TRI6
+   37 :   }
+   38 :   else if (n == 10)
+   39 :   {
+   40 :     e = 11;           // TET10
+   41 :   }
+   42 :   else
+   43 :   {
+   44 :     cout << "Unknown element type, having " << n << "nodes!" << endl;
+   45 :     assert (false);       // Shouldn't get here!
+   46 :   }
+   47 :   return e;
+   48 : }
+   49 :
+   50 :
+   51 : /* ===================================================================== */
+   52 : /* En() Return a one-dimensional array of permutation of the nodes of an */
+   53 : /*      element for output to Gmsh, for Gmsh element type t.             */
+   54 : /* ===================================================================== */
+   55 :
+   56 : func int[int] Permutation(int t)
+   57 : {
+   58 :   int[int] ndofK = [0, 0, 3, 0, 4, 0, 0, 0, 0, 6, 0, 10];
+   59 :   int[int] r(ndofK[t]);
+   60 :
+   61 :   if (t == 2)
+   62 :   {
+   63 :     r = [0, 1, 2];                         // 3-node triangle
+   64 :   }
+   65 :   else if (t == 4)
+   66 :   {
+   67 :     r = [0, 1, 2, 3];                      // 4-node tetrahedron
+   68 :   }
+   69 :   else if (t == 9)
+   70 :   {
+   71 :         r = [0, 1, 2, 5, 3, 4];                // 6-node triangle
+   72 :   }
+   73 :   else if (t == 11)
+   74 :   {
+   75 :         r = [0, 1, 2, 3, 4, 7, 5, 6, 9, 8];    // 10-node tetrahedron
+   76 :   }
+   77 :   else
+   78 :   {
+   79 :     cout << "Unknown element type: " << t << "!" << endl;
+   80 :     assert (false);                           // Shouldn't get here!
+   81 :   }
+   82 :   return r;
+   83 : }
+   84 :
+   85 :
+   86 : // writemsh: Write the (scalar) finite element field u (of fespace
+   87 : // type Vh) with name s (e.g. "temperature" or "concentration") to a
+   88 : // file filename in Gmsh .msh format.
+   89 : // writemshdata: Write to ofstream ff the scalar finite element field
+   90 : // u with name s at step it and time t as type "Node" for P1 or P2, or
+   91 : // "Element" for P0.  (TODO: Try and detect P0 data automatically.)
+   92 :
+   93 :
+  159 #     ff << "$" + "Node" + "Data" << endl + 1;
+  161 #        << "\"" << s << "\"" << endl
+  177 # }   )   < "$End" + "Node" + "Data" << endl;
+  178 : {
+  179 :
+  180 :   /* Open filename for write */
+  181 :
+  182 :   ofstream ff (filename);
+  183 :
+  184 :   /* Write header of .mesh file format */
+  185 :
+  186 :   {
+  187 :     ff << "$MeshFormat" << endl;
+  188 :     ff << "2.1 0 8" << endl;
+  189 :     ff << "$EndMeshFormat" << endl;
+  190 :   }
+  191 :
+  192 :   /* Write Nodes */
+  193 :
+  194 :   {
+  195 :     Vh[int] xh(3);
+  196 :     xh[0] = x;
+  197 :     xh[1] = y;
+  198 :     xh[2] = z;
+  199 :
+  200 :     ff << "$Nodes" << endl;
+  201 :     ff << Vh.ndof << endl;
+  202 :
+  203 :     for (int n = 0; n < Vh.ndof; n++)
+  204 :         {
+  205 :       ff << n+1
+  206 :          << "  " << xh[0][][n]
+  207 :              << "  " << xh[1][][n]
+  208 :              << "  " << xh[2][][n];
+  209 :           ff << endl;
+  210 :     }
+  211 :   }
+  212 :
+  213 :   /* Write Elements */
+  214 :
+  215 :   {
+  216 :     int elmtyp = GmshElmTyp(Vh.ndofK);
+  217 :     int[int] np = En(elmtyp);
+  218 :
+  219 :     ff << "$Elements" << endl;
+  220 :     ff << Vh.nt << endl;
+  221 :     for (int e = 0; e < Vh.nt; e++)
+  222 :         {
+  223 :       ff << e+1 << "  "
+  224 :              << elmtyp << "  "
+  225 :              << "2  "
+  226 :              << Th[e].label << "  "
+  227 :              << Th[e].region;
+  228 :
+  229 :           for (int n = 0; n < Vh.ndofK; n++)
+  230 :           {
+  231 :             ff << "  " << Vh (e, np[n]) + 1;
+  232 :           }
+  233 :       ff << endl;
+  234 :     }
+  235 :
+  236 :     ff << "$EndElements" << endl;
+  237 :   }
+  238 :
+  239 :   /* Write Data */
+  240 :
+  241 :   {
+  242 :     ff << "$" + "Node" + "Data" << endl
+  243 :
+  244 :        << "1" << endl
+  245 :        << "\"" << s << "\"" << endl
+  246 :
+  247 :        << "1" << endl
+  248 :        << 0.0 << endl
+  249 :        << "3" << endl
+  250 :        << 0 << endl
+  251 :        << "1" << endl
+  252 :        << u.n << endl;
+  253 :
+  254 :     for (int n = 0; n < u.n; n++)
+  255 :         {
+  256 :       ff << n+1 << "  " << u[n] << endl;
+  257 :         }
+  258 :
+  259 :     ff << "$End" + "Node" + "Data" << endl;
+  260 :   }
+  261 :
+  262 : }  // EOM
+  263 :
+  264 :
+  265 :
+  266 :
+  267 :
+  268 : // Copyright (C) 2009, 2010 G. D. McBain -*- c++ -*-
+  269 :
+  270 : // Save a scalar solution in Gmsh .msh format.  The arguments are
+  271 : // strings for the file and variable, the real array containing the
+  272 : // variable (e.g. u[]), and the Gmsh element type (2 = TRI3, 4 = TET4,
+  273 : // 9 = TRI6, 11 = TET10).
+  274 :
+  275 : // Author: G. D. McBain <gdmcbain@freeshell.org>
+  276 :
+  277 : // Created: 2009-08-13?
+  278 :
+  279 : // Keywords: postprocessing, Gmsh
+  280 :
+  281 :
+  282 :
+  283 :
+  284 :
+  285 :
+  286 : func int[int] En (int t)
+  287 : {
+  288 :
+  289 :   int[int] ndofK = [0, 0, 3, 0, 4, 0, 0, 0, 0, 6, 0, 10];
+  290 :   int[int] r(ndofK[t]);
+  291 :
+  292 :   if (t == 2)
+  293 :   {
+  294 :     r = [0, 1, 2];   // 3-node triangle
+  295 :   }
+  296 :   else
+  297 :   {
+  298 :     if (t == 4)
+  299 :         {
+  300 :       r = [0, 1, 2, 3];  // 4-node tetrahedron
+  301 :     }
+  302 :         else
+  303 :         {
+  304 :       if (t == 9)
+  305 :           {
+  306 :             r = [0, 1, 2, 5, 3, 4]; // 6-node triangle
+  307 :       }
+  308 :           else
+  309 :           {
+  310 :             if (t == 11)
+  311 :                 {
+  312 :               r = [0, 1, 2, 3, 4, 7, 5, 6, 9, 8]; // 10-node tetrahedron
+  313 :             }
+  314 :                 else
+  315 :                 {
+  316 :               cout << "Unknown element type: " << t << "!" << endl;
+  317 :               assert (false);   // Shouldn't get here!
+  318 :             }
+  319 :       }
+  320 :     }
+  321 :   }
+  322 :   return r;
+  323 : }
+  324 :
+  325 :
+  326 : /* ===================================================================== */
+  327 : // writemshdata: Write to ofstream ff the scalar finite element field
+  328 : // u with name s at step it and time t as type "Node" for P1 or P2, or
+  329 : // "Element" for P0.  (TODO: Try and detect P0 data automatically.)
+  330 :
+  331 :
+  334 #   ff << "$" + type + "Data" << endl, type)
+  336 #      << "\"" << s << "\"" << endl
+  346 # } )   < "$End" + type + "Data" << endl;
+  347 : {
+  348 :   ff << "$" + type + "Data" << endl
+  349 :
+  350 :      << "1" << endl
+  351 :      << "\"" << s << "\"" << endl
+  352 :
+  353 :      << "1" << endl
+  354 :      << t << endl
+  355 :      << "3" << endl
+  356 :      << it << endl
+  357 :      << "1" << endl
+  358 :      << u.n << endl;
+  359 :   for (int n = 0; n < u.n; n++)
+  360 :     ff << n+1 << "  " << u[n] << endl;
+  361 :   ff << "$End" + type + "Data" << endl;
+  362 : }//
+  363 :
+  364 : // writemsh: Write the (scalar) finite element field u (of fespace
+  365 : // type Vh) with name s (e.g. "temperature" or "concentration") to a
+  366 : // file filename in Gmsh .msh format.
+  367 :
+  437 #     ff << "$" + "Node + "Data" << endl) + 1;
+  439 #        << "\"" << s << "\"" << endl
+  455 # } )    << "$End" + "Node" + "Data" << endl;
+  456 : {
+  457 :
+  458 :   /* Open filename for write */
+  459 :
+  460 :   ofstream ff (filename);
+  461 :
+  462 :   /* Write header of .mesh file format */
+  463 :
+  464 :   {
+  465 :     ff << "$MeshFormat" << endl;
+  466 :     ff << "2.1 0 8" << endl;
+  467 :     ff << "$EndMeshFormat" << endl;
+  468 :   }
+  469 :
+  470 :   /*  Write Nodes */
+  471 :
+  472 :   {
+  473 :     Vh[int] xh(3);
+  474 :
+  475 :     xh[0] = x;
+  476 :     xh[1] = y;
+  477 :     xh[2] = z;
+  478 :
+  479 :     ff << "$Nodes" << endl;
+  480 :     ff << Vh.ndof << endl;
+  481 :
+  482 :     for (int n = 0; n < Vh.ndof; n++)
+  483 :         {
+  484 :       ff << n+1
+  485 :          << "  " << xh[0][][n]
+  486 :              << "  " << xh[1][][n]
+  487 :              << "  " << xh[2][][n];
+  488 :           ff << endl;
+  489 :     }
+  490 :
+  491 :     ff << "$EndNodes" << endl;
+  492 :   }
+  493 :
+  494 :   /* Write Elements */
+  495 :
+  496 :   {
+  497 :     int elmtyp = GmshElmTyp (Vh.ndofK);
+  498 :     int[int] np = En (elmtyp);
+  499 :
+  500 :     ff << "$Elements" << endl;
+  501 :     ff << Vh.nt << endl;
+  502 :
+  503 :     for (int e = 0; e < Vh.nt; e++)
+  504 :         {
+  505 :       ff << e+1 << "  "
+  506 :              << elmtyp << "  "
+  507 :              << "2  "
+  508 :              << Th[e].label << "  "
+  509 :              << Th[e].region;
+  510 :
+  511 :       for (int n = 0; n < Vh.ndofK; n++)
+  512 :           {
+  513 :             ff << "  " << Vh (e, np[n]) + 1;
+  514 :           }
+  515 :
+  516 :       ff << endl;
+  517 :     }
+  518 :     ff << "$EndElements" << endl;
+  519 :   }
+  520 :
+  521 :   /* Write Data */
+  522 :
+  523 :   {
+  524 :     ff << "$" + "Node + "Data" << endl
+  525 :
+  526 :        << "1" << endl
+  527 :        << "\"" << s << "\"" << endl
+  528 :
+  529 :        << "1" << endl
+  530 :        << 0.0 << endl
+  531 :        << "3" << endl
+  532 :        << 0 << endl
+  533 :        << "1" << endl
+  534 :        << u.n << endl;
+  535 :
+  536 :     for (int n = 0; n < u.n; n++)
+  537 :         {
+  538 :       ff << n+1 << "  " << u[n] << endl;
+  539 :         }
+  540 :
+  541 :     ff << "$End" + "Node" + "Data" << endl;
+  542 :   }
+  543 :
+  544 : }//
+  545 :
+  546 : // membrane.edp -*- c++ -*-
+  547 :
+  548 : // adapted from Section 3.1 of the FreeFem++ manual to export to Gmsh
+  549 :
+  550 : /*
+  551 : real theta = 4.*pi/3.;
+  552 : real a = 2., b = 1.; // the length of the semimajor axis and semiminor axis
+  553 : func z = x;
+  554 : border Gamma1 (t = 0, theta)     { x = a * cos(t); y = b*sin(t); }
+  555 : border Gamma2 (t = theta, 2 * pi) { x = a * cos(t); y = b*sin(t); }
+  556 : mesh Th = buildmesh (Gamma1 (100) + Gamma2 (50));
+  557 : fespace Vh (Th, P2);            //    P2 conforming triangular FEM
+  558 : Vh phi, w, f = 1;
+  559 : solve Laplace (phi, w) =
+  560 :   int2d (Th) (dx (phi) * dx (w) + dy (phi) * dy (w))
+  561 :   - int2d (Th) (f*w) + on (Gamma1, phi = z);
+  562 : // plot(phi,wait=true, ps="membrane.eps");       //   Plot phi
+  563 : // plot(Th,wait=true, ps="membraneTh.eps"); //   Plot Th
+  564 : // savemesh(Th,"Th.msh");
+  565 :
+  566 : include "writemsh.edp"
+  567 : writemsh ("membrane.msh", "deflexion", phi[], Th, Vh);
+  568 : */
+  569 :
+  570 :
+    4 :
+    5 : include "conductividadelectrica.edp"
+    2 : // Valores criticos de la temperatura para la conductividad electrica
+    3 : real tempcritica0 = 298.;
+    4 : real tempcritica1 = 470.;
+    5 : real tempcritica2 = 672.;
+    6 : real tempcritica3 = 850.;
+    7 :
+    8 : // Coeficientes de los polinomios que sirven para aproximar la conductividad electrica
+    9 : real coef01 = 1.2047173737217676*10^7, coef11 = -30167.896720105175, coef21 = 26.18741034731349;
+   10 : real coef02 = 1.010982623048548*10^7,  coef12 = -18857.409223299666, coef22 = 10.892790081281841;
+   11 : real coef03 = 1.1614622547014464*10^7, coef13 = -19379.53765153729, coef23 =  8.33750465763241;
+   12 : real coef04 = 6.638206702244068, coef14 = 1.2135745034567888*10^2.,
+   13 :      coef24 = -3.794330496486601*10, coef34 = 5.528833365316495, coef00 = 10^8;
+   14 :
+   15 :
+   16 :
+   17 : func real polinter1(real temp){return coef01 + (coef11 + coef21*temp)*temp ;}
+   18 : func real polinter2(real temp){return coef02 + (coef12 + coef22*temp)*temp ;}
+   19 : func real polinter3(real temp){return coef03 + (coef13 + coef23*temp)*temp ;}
+   20 : func real polinter4(real temp){real tempaux = temp/1000.; return coef04 + tempaux*(coef14 + tempaux*(coef24 + te@£—mpaux*coef34)) ;}
+   21 :
+   22 : real conducelec0 = polinter1(tempcritica0);
+   23 :
+   24 : /*f
+   25 : unc real conductividadelectrica(real temp){
+   26 :         return (temp < tempcritica0)*conducelec0
+   27 :          + (tempcritica0 <= temp)*(temp < tempcritica1)*polinter1(temp)
+   28 :          + (tempcritica1 <= temp)*(temp < tempcritica2)*polinter2(temp)
+   29 :          + (tempcritica2 <= temp)*(temp < tempcritica3)*polinter3(temp)
+   30 :          + (tempcritica3 <= temp)*coef00/polinter4(temp)
+   31 :               ;}
+   32 : */
+   33 :
+   34 : //paco
+   35 : real tempcritica4 = 1200.;
+   36 : real coef44 = coef00/polinter4(tempcritica4);
+   37 : func real conductividadelectrica(real temp){
+   38 :         return (temp < tempcritica0)*conducelec0
+   39 :          + (tempcritica0 <= temp)*(temp < tempcritica1)*polinter1(temp)
+   40 :          + (tempcritica1 <= temp)*(temp < tempcritica2)*polinter2(temp)
+   41 :          + (tempcritica2 <= temp)*(temp < tempcritica3)*polinter3(temp)
+   42 :          + (tempcritica3 <= temp)*(temp < tempcritica4)*coef00/polinter4(temp)
+   43 :          + (tempcritica4 <= temp)*coef44*exp(-(temp-tempcritica4)*0.016)
+   44 :               ;}
+   45 :
+   46 : {// Crear archivos si/no
+   47 : bool grabarsino = 0;
+   48 : if (grabarsino){
+   49 :  // Crea un archivo para usar con gnuplot
+   50 : real sigmamin = 744., sigmamax= 6.e+06;
+   51 : { ofstream ficheroF("./conducelecb.plt");
+   52 :  ficheroF << "# Fichero que para dibujar una grafica leyendo un
+  ... :  archivo"<<endl;
+   53 :  ficheroF << "set xlabel \"temperatura\" 2"<<endl;
+   54 :  ficheroF << "set ylabel \"condutividad electrica acero\" 2"<<endl;
+   55 :  ficheroF << "pause .1"<<endl;
+   56 :  ficheroF << "set title \"condutividad electrica acero\""<<endl;
+   57 :  ficheroF << "plot [] ["<<sigmamin<<":"<<sigmamax<<"] \"conducelecb.dat\" with lines linewidth 1"<<endl;}
+   58 :
+   59 :  // Crea el archivo conducelecb.dat
+   60 :  { ofstream ficheroF("./conducelecb.dat");
+   61 :      for (real j=200;j<=2000;j+=1.){
+   62 : //           cout << j << "  " << endl;
+   63 :           ficheroF << j<<"  "<< conductividadelectrica(j)<<endl;
+   64 :  //        ficheroF << "{"+j+","+polinter4(1.*j)+"},";
+   65 :           }
+   66 :   }
+   67 :
+   68 :
+   69 : //  Crea un archivo para usar con ListPlot[]
+   70 : // { ofstream ficheroF("./conducelecb.txt");
+   71 : //     ficheroF << "{";
+   72 : //     for (int j=290;j<1700;j++){
+   73 : //           cout << j << polinter4(j) << endl;
+   74 : //          ficheroF << "{"+j+","+conductividadelectrica(j)+"},";
+   75 : //         ficheroF << "{"+j+","+polinter4(1.*j)+"},";
+   76 : //          }
+   77 : //     ficheroF << "{"+1700.+","+conductividadelectrica(1700.)+"}";
+   78 : //     ficheroF << "}";}
+   79 : }}
+   80 :  // conductividad variable
+    6 :
+    7 : mesh3 Th3corona=readmesh3("gear-2019.mesh");
+    8 :
+    9 : // int Dcorona = 145;
+   10 :
+   11 : real radio = 0.2;
+   12 : real porcionradio = 0.7;
+   13 : real alturadiente = radio/8.;
+   14 :
+   15 : // Four points in the gear to evaluate the temperature at each one
+   16 : real[int] XX(4);
+   17 : for (int j=0; j<=3; ++j)
+   18 : { XX[j]= radio*(1-1./6.)+ j*radio*7./72;
+   19 :   cout << "XX("<<j<<")= "<< XX[j]<<endl;}//YY[j]=0=ZZ(j).
+   20 :
+   21 : int Dcorona = Th3corona(0.5*(porcionradio+1)*radio,0.,0.).region;
+   22 :
+   23 : cout << "Dcorona = 145 ? " << Dcorona << endl;
+   24 :
+   25 : fespace Th1(Th3corona,P13d);
+   26 : Th1 Joule; // Termino fuente
+   27 :
+   28 : {ifstream ff("precomputed-joule-effect-coefficients.txt");
+   29 :    ff >> Joule[];}
+   30 :
+   31 :
+   32 :
+   33 : ///////////////////////////////////////////////////////?////////////////////////////////////////?
+   34 : //CONSTANTES DEL MODELO
+   35 : ///////////////////////////////////////////////////////?////////////////////////////////////////?
+   36 :
+   37 : //Conductividad eléctrica
+   38 : real sigma1=5.35367e+06;//Conductividad eléctrica en Omega1 (pieza de acero)
+   39 : Joule = Joule / sigma1;
+   40 : //func sigma2=5.96e7;//Conductividad eléctrica en Omega2 (inductor de cobre)
+   41 : //func sigma3=0.;//Conductividad eléctrica en Omega3 (aire)
+   42 :
+   43 : //Para asegurar la unicidad de solución de la ecuación de phi por la condición de Neumann
+   44 : //real epsilon=1.e-10;
+   45 :
+   46 : //real frecuencia = 900;//Frecuencia del generador
+   47 : //real omega=2*pi*frecuencia;//Pulsación o frecuencia angular
+   48 :
+   49 : real rho=7.653e3;//Density of steel
+   50 : real calorespecifico=5.54e2;// Specific heat of steel
+   51 : real aconductermica=34.28;//Conductividad térmica de la barra // Diffusion of steel
+   52 : real alpha = 6.6e3;      // Transfer coefficient
+   53 : //real uaqua=273+42.; // Aquaquenching Temperature
+   54 : real uaqua=273+45.; // Aquaquenching Temperature
+   55 :
+   56 :
+   57 : //real rhocobre=8.96e3;//Densidad del cobre kg/m^3
+   58 : //real ccobre=3.85e2;//Calor específico del cobre Julios/(kg.ºK)
+   59 : //real acobre=389.6;//Conductividad términa del cobre Julio/(s.m.ºC)
+   60 :
+   61 : //////////////////////////////////////////////////?////////////////////////////////////////?
+   62 : // //PARA LAS ITERACIONES EN TIEMPO
+   63 : //sreal Tiempo=5.5;//Duración del proceso de calentamiento // Final heating stage time
+   64 : real Tc=10.;//Duración del proceso de calentamiento // Final heating stage time
+   65 : real tcierto = 0.; // se usa durante el enfriamiento con paso variable
+   66 : real Tfinal = Tc + 16;  // Final cooling stage time
+   67 :
+   68 : int Niteraciones=200;//Nmero de iteraciones en tiempo
+   69 : real dt=Tc/Niteraciones;//Paso en tiempo //Time step
+   70 : //////////////////////////////////////////////////?////////////////////////////////////////?
+   71 :
+   72 :
+   73 :   // Definicion de las constantes segun el acero
+   74 :
+   75 :   real As=730.+273;
+   76 :   real cm=1.4;
+   77 :   real Ms=360.+273;
+   78 :
+   79 :
+   80 :   // Definiendo el calor de latencia
+   81 :
+   82 :   real Latencia=8.2e4;
+   83 :
+   84 :   // Definiendo las funciones que intervienen en la evolucin de la austenita
+   85 :
+   86 :
+   87 :   // Funcin temporal, a determinar segn el acero
+   88 :
+   89 :   func real ta(real temp)
+   90 :   {
+   91 :  return
+   92 :  1*(temp<=1003.)+
+   93 :  (1.-0.008*(-1003.+temp))*(1003.<temp && temp<=1103.)+
+   94 :  (0.2-0.00214286*(-1103.+temp))*(1103.<temp && temp<=1173.)+
+   95 :  0.05*(temp>1173);
+   96 :   }
+   97 :
+   98 :
+   99 :   // Funcin de "equilibrio" para la austenita, a determinar segn el acero
+  100 :
+  101 :   func real aeq(real temp)
+  102 :   {
+  103 :  return
+  104 :  (1./110*(-1003.+temp))*(1003.<temp && temp<=1113.)+1.*(temp>1113);
+  105 :   }
+  106 :
+  107 :   // Funciones que determinan la evolucin de las fases austenita y martensita en el sistema (donde la temperatur@£—a entra como dato)
+  108 :   //
+  109 :   //                                       a'=1/ta(temp)*(aeq(temp)-a)*(temp-1003>=0)-m';
+  110 :   //                                       m'=1.4*(1-m)*(633-temp>=0)*(-temp'>0);
+  111 :   //
+  112 :   // Definimos fa(t,a)=1/ta(temp(t))*(aeq(temp(t))-a)*(temp-1003>=0)
+  113 :   //           fm(t,m)=cm*(1-m)*(633-temp>=0)
+  114 :   // y dejamos pendiente el acoplamiento y la funcin de signo sobre la variacin de la temperatura para ser intro@£—ducidos en el bucle de programacin, cuando iteremos.
+  115 :
+  116 :   real deltaheavy = .25;
+  117 :   func real heavydelta(real t){
+  118 :  return (t>deltaheavy)*((t-deltaheavy)/deltaheavy*(t<2*deltaheavy)+(t>=2*deltaheavy));}
+  119 :
+  120 :   func real fm(real temp, real austen, real martens,  real temp1)
+  121 :   {
+  122 :  return cm*austen*(Ms-temp>0)*heavydelta(temp1-temp);
+  123 :   }
+  124 :   func real fa(real temp, real a, real martens, real temp1)
+  125 :   {
+  126 :  return max((aeq(temp)-a)/ta(temp),0.)*(temp-As>0)-fm(temp,a,martens,temp1);
+  127 :   }
+  128 :
+  129 :
+  130 :   // Las funciones austenita y martensita para que entren en el problema variacional se declaran como funciones
+@£—de malla
+  131 :
+  132 :   //  Inicializamos el problema de las fases
+  133 :
+  134 :   Th1 aa0=0., aa=aa0;
+  135 :   Th1 m0=0., mm=m0;
+  136 :   Th1 mmm;
+  137 :
+  138 :   Th1 FF11, FF12;
+  139 :   Th1 FFF11, FFF12;
+  140 :   Th1 U,UU,W;
+  141 :
+  142 :   Th1 fmm, fmmm, faa, faaa;
+  143 :
+  144 :  /////////////////////////////////////////////////////////////?////////////////////////////////////////?
+  145 :
+  146 : //  fespace Th2(Th,P2);
+  147 :   Th1 u, uu, w, u0, v, Source;
+  148 :
+  149 :   real rho0=rho;
+  150 :   real c0=calorespecifico;
+  151 :   real a0=aconductermica;
+  152 :   real dtm = 0.5*dt;
+  153 :
+  154 :   u0 = 300.; // Initial temperature = room temperature
+  155 :   u = u0;
+  156 :   uu = u;
+  157 :
+  158 : func real pasoc(real t){t^2/Tc;} // paso variable en tiempo para la etapa de calentamiento
+  159 :
+  160 :   problem heatingup(w,v) = int3d(Th3corona)(rho0*c0*w*v
+  161 :           + dtm*a0*(dx(w)*dx(v) + dy(w)*dy(v) +dz(w)*dz(v)))
+  162 :           - int3d(Th3corona)(Source*v);Problem : ----------------------------- 3096 dim = 3 0x2a5d290
+ 
+  163 :
+  164 : int kpower = 0;
+  165 : real ausMin, ausMax, marMin, marMax;
+  166 : real dtn;
+  167 :
+  168 : real[int] Level=[1160,1165,1170,1175,1180,1700];//temperatures values to reduce the Joule term
+  169 : int iLevel=0;
+  170 : //real[int] reduction=[0.95,0.9,0.85,0.7,0.5,0.5];//Joule reduction
+  171 : real[int] reduction=[0.5,0.3,0.2,0.15,0.15,0.1];//Joule reduction
+  172 :
+  173 : // Generation of files (Y/N) to be read from gnuplot:
+  174 : //we save the temperatures at four different points of a tooth
+  175 : bool grabarsino = 1;
+  176 : if (grabarsino){
+  177 :  // We first generate a main gnuplot file
+  178 : //real tempmin = 290, tempmax= 1350;
+  179 : { ofstream filetemp("./temperatures4.plt");
+  180 :  filetemp << "# This file generates a plot of the temperature,
+  ... : at four different points inside the gear, by readi
+  ... : ng four files: temp1.dat, temp2.dat, temp3.dat and
+  ... :  temp4.dat"<<endl;
+  181 :  filetemp << "set xlabel \"Time (seconds)\" "<<endl;
+  182 :  filetemp << "set ylabel \"Temperature (Kelvin)\" "<<endl;
+  183 :  filetemp << "pause .1"<<endl;
+  184 :  filetemp << "set title \"Evolution of temperature at four poin
+  ... : ts inside the gear\""<<endl;
+  185 :  filetemp << "plot ["<<0<<":"<<Tfinal<<"] [290:1350] \"temp1.dat\" with lines linewidth 1
+  ... : , \"temp2.dat\" with lines linewidth 1, \"temp3.da
+  ... : t\" with lines linewidth 1, \"temp4.dat\" with lin
+  ... : es linewidth 1 "<<endl;}
+  186 : }
+  187 :
+  188 : // Open the four files temp1.dat,...,temp4.dat:
+  189 : ofstream filetemp1("./temp1.dat");
+  190 : ofstream filetemp2("./temp2.dat");
+  191 : ofstream filetemp3("./temp3.dat");
+  192 : ofstream filetemp4("./temp4.dat");
+  193 :
+  194 :    for(real t=0;t<=Tc;t+=dt)
+  195 :  {      dtn = pasoc(t+dt)-pasoc(t); //paso variable durante el enfriamiento
+  196 :     tcierto +=dtn;
+  197 :
+  198 :         faa  = fa(u,aa,       mm,uu);
+  199 :           faaa = fa(u,aa+dt*faa,mm,uu);
+  200 :           aa=aa+0.5*dtn*(faa+faaa);
+  201 :     aa=max(min(aa,1.),0.); // truncamiento de austenita a la altura 1.
+  202 :
+  203 :    Source = 0.5*dtn*(Joule*0.5*(conductividadelectrica(u)+conductividadelectrica(uu))
+  204 :             - 0.5*rho0*Latencia*(faa+faaa)) + rho0*c0*u;
+  205 :
+  206 :    heatingup;
+  207 :    uu = u;
+  208 :    u = 2*w - u;
+  209 :
+  210 :
+  211 :         ausMin = aa[].min;
+  212 :         ausMax = aa[].max;
+  213 :         cout<<"t="<<tcierto<<",  Austenite: "<<ausMin<<",  "<<ausMax<<endl;
+  214 :         if (u[].max > Level[iLevel]) {
+  215 :         Joule = Joule*reduction[iLevel];
+  216 :                 iLevel = min(iLevel +1,Level.n -1);
+  217 :                 cout << "Power reduction no. "<< iLevel<<
+  218 :                 ", Joule*reduction("<<iLevel<<")= "<<reduction[iLevel] <<endl;
+  219 :         }
+  220 : /*
+  221 :         if (u[].max > 1490.) {
+  222 :                 kpower = kpower +1;
+  223 : //              Joule = .95*Joule;
+  224 :                 cout << "Power reduction no. "<< kpower <<endl;}
+  225 : */
+  226 :
+  227 : if (abs(tcierto-7.)<0.09) {medit("Austenite-t=7", Th3corona, aa, order=1);}
+  228 : if (abs(tcierto-9.)<0.09) {medit("Austenite-t=10", Th3corona, aa, order=1);}
+  229 :
+  230 : if (grabarsino){
+  231 :    filetemp1 << tcierto<<"  "<< u(XX[0],0.,0.)<<endl;
+  232 :    filetemp2 << tcierto<<"  "<< u(XX[1],0.,0.)<<endl;
+  233 :    filetemp3 << tcierto<<"  "<< u(XX[2],0.,0.)<<endl;
+  234 :    filetemp4 << tcierto<<"  "<< u(XX[3],0.,0.)<<endl;
+  235 :    }
+  236 : }
+  237 : medit("Heating: Final Temperature", Th3corona, u, order=1);
+  238 : medit("Heating: Final Austenite", Th3corona, aa, order=1);
+  239 :
+  240 : WriteGmshFile("induccion-temperature10-2019.msh", "Heating: Final Temperature", u[], Th3corona, Th1)
+   95 :
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :
+  104 :
+  105 :
+  106 :
+  107 :
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :
+  112 :
+  113 :
+  114 :
+  115 :
+  116 :
+  117 :
+  118 :
+  119 :
+  120 :
+  121 :
+  122 :
+  123 :
+  124 :
+  125 :
+  126 :
+  127 :
+  128 :
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :
+  133 :
+  134 :
+  135 :
+  136 :
+  137 :
+  138 :
+  139 :
+  140 :
+  141 :
+  142 :
+  143 :
+  144 :
+  145 :
+  146 :
+  147 :
+  148 :
+  149 :
+  150 :
+  151 :
+  152 :
+  153 :
+  154 :
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :
+  159 :
+  160 :
+  161 :
+  162 :
+  163 :
+  164 :
+  165 :
+  166 :
+  167 :
+  168 :
+  169 :
+  170 :
+  171 :
+  172 :
+  173 :
+  174 :
+  175 :
+  176 :
+  177 :
+   95 : {
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :   ofstream ff ("induccion-temperature10-2019.msh");
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :   {
+  104 :     ff << "$MeshFormat" << endl;
+  105 :     ff << "2.1 0 8" << endl;
+  106 :     ff << "$EndMeshFormat" << endl;
+  107 :   }
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :   {
+  112 :      Th1[int] xh(3);
+  113 :     xh[0] = x;
+  114 :     xh[1] = y;
+  115 :     xh[2] = z;
+  116 :
+  117 :     ff << "$Nodes" << endl;
+  118 :     ff <<  Th1.ndof << endl;
+  119 :
+  120 :     for (int n = 0; n <  Th1.ndof; n++)
+  121 :         {
+  122 :       ff << n+1
+  123 :          << "  " << xh[0][][n]
+  124 :              << "  " << xh[1][][n]
+  125 :              << "  " << xh[2][][n];
+  126 :           ff << endl;
+  127 :     }
+  128 :   }
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :   {
+  133 :     int elmtyp = GmshElmTyp( Th1.ndofK);
+  134 :     int[int] np = En(elmtyp);
+  135 :
+  136 :     ff << "$Elements" << endl;
+  137 :     ff <<  Th1.nt << endl;
+  138 :     for (int e = 0; e <  Th1.nt; e++)
+  139 :         {
+  140 :       ff << e+1 << "  "
+  141 :              << elmtyp << "  "
+  142 :              << "2  "
+  143 :              <<  Th3corona[e].label << "  "
+  144 :              <<  Th3corona[e].region;
+  145 :
+  146 :           for (int n = 0; n <  Th1.ndofK; n++)
+  147 :           {
+  148 :             ff << "  " <<  Th1 (e, np[n]) + 1;
+  149 :           }
+  150 :       ff << endl;
+  151 :     }
+  152 :
+  153 :     ff << "$EndElements" << endl;
+  154 :   }
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :   {
+  159 :     ff << "$" + "Node" + "Data" << endl
+  160 :        << "1" << endl
+  161 :        << "\"" <<  "Heating: Final Temperature" << "\"" << endl
+  162 :        << "1" << endl
+  163 :        << 0.0 << endl
+  164 :        << "3" << endl
+  165 :        << 0 << endl
+  166 :        << "1" << endl
+  167 :        <<  u[].n << endl;
+  168 :
+  169 :     for (int n = 0; n <  u[].n; n++)
+  170 :         {
+  171 :       ff << n+1 << "  " <<  u[][n] << endl;
+  172 :         }
+  173 :
+  174 :     ff << "$End" + "Node" + "Data" << endl;
+  175 :   }
+  176 :
+  177 : }  ;
+  241 : WriteGmshFile("induccion-austenite10-2019.msh", "Heating: Final Austenite", aa[], Th3corona, Th1)
+   95 :
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :
+  104 :
+  105 :
+  106 :
+  107 :
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :
+  112 :
+  113 :
+  114 :
+  115 :
+  116 :
+  117 :
+  118 :
+  119 :
+  120 :
+  121 :
+  122 :
+  123 :
+  124 :
+  125 :
+  126 :
+  127 :
+  128 :
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :
+  133 :
+  134 :
+  135 :
+  136 :
+  137 :
+  138 :
+  139 :
+  140 :
+  141 :
+  142 :
+  143 :
+  144 :
+  145 :
+  146 :
+  147 :
+  148 :
+  149 :
+  150 :
+  151 :
+  152 :
+  153 :
+  154 :
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :
+  159 :
+  160 :
+  161 :
+  162 :
+  163 :
+  164 :
+  165 :
+  166 :
+  167 :
+  168 :
+  169 :
+  170 :
+  171 :
+  172 :
+  173 :
+  174 :
+  175 :
+  176 :
+  177 :
+   95 : {
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :   ofstream ff ("induccion-austenite10-2019.msh");
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :   {
+  104 :     ff << "$MeshFormat" << endl;
+  105 :     ff << "2.1 0 8" << endl;
+  106 :     ff << "$EndMeshFormat" << endl;
+  107 :   }
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :   {
+  112 :      Th1[int] xh(3);
+  113 :     xh[0] = x;
+  114 :     xh[1] = y;
+  115 :     xh[2] = z;
+  116 :
+  117 :     ff << "$Nodes" << endl;
+  118 :     ff <<  Th1.ndof << endl;
+  119 :
+  120 :     for (int n = 0; n <  Th1.ndof; n++)
+  121 :         {
+  122 :       ff << n+1
+  123 :          << "  " << xh[0][][n]
+  124 :              << "  " << xh[1][][n]
+  125 :              << "  " << xh[2][][n];
+  126 :           ff << endl;
+  127 :     }
+  128 :   }
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :   {
+  133 :     int elmtyp = GmshElmTyp( Th1.ndofK);
+  134 :     int[int] np = En(elmtyp);
+  135 :
+  136 :     ff << "$Elements" << endl;
+  137 :     ff <<  Th1.nt << endl;
+  138 :     for (int e = 0; e <  Th1.nt; e++)
+  139 :         {
+  140 :       ff << e+1 << "  "
+  141 :              << elmtyp << "  "
+  142 :              << "2  "
+  143 :              <<  Th3corona[e].label << "  "
+  144 :              <<  Th3corona[e].region;
+  145 :
+  146 :           for (int n = 0; n <  Th1.ndofK; n++)
+  147 :           {
+  148 :             ff << "  " <<  Th1 (e, np[n]) + 1;
+  149 :           }
+  150 :       ff << endl;
+  151 :     }
+  152 :
+  153 :     ff << "$EndElements" << endl;
+  154 :   }
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :   {
+  159 :     ff << "$" + "Node" + "Data" << endl
+  160 :        << "1" << endl
+  161 :        << "\"" <<  "Heating: Final Austenite" << "\"" << endl
+  162 :        << "1" << endl
+  163 :        << 0.0 << endl
+  164 :        << "3" << endl
+  165 :        << 0 << endl
+  166 :        << "1" << endl
+  167 :        <<  aa[].n << endl;
+  168 :
+  169 :     for (int n = 0; n <  aa[].n; n++)
+  170 :         {
+  171 :       ff << n+1 << "  " <<  aa[][n] << endl;
+  172 :         }
+  173 :
+  174 :     ff << "$End" + "Node" + "Data" << endl;
+  175 :   }
+  176 :
+  177 : }  ;
+  242 :
+  243 : problem coolingdown(w,v) = int3d(Th3corona)( rho0*c0*w*v
+  244 :           + dtn*a0*(dx(w)*dx(v) + dy(w)*dy(v) +dz(w)*dz(v)))
+  245 :           + int2d(Th3corona,76,77,78,79)(dtn*alpha*w*v)
+  246 :           - int2d(Th3corona,76,77,78,79)(dtn*alpha*uaqua*v)
+  247 :           - int3d(Th3corona)(Source*v);Problem : ----------------------------- 10392 dim = 3 0x2a5df50
+ 
+  248 :
+  249 : func real pasocooling(real t){(t-Tc)^2/(Tfinal-Tc);} // paso variable en tiempo para la etapa de enfriamiento
+  250 :     tcierto = Tc;
+  251 :
+  252 :    for(real t=Tc;t<=Tfinal;t+=dt)
+  253 :  {      dtn = pasocooling(t+dt)-pasocooling(t); //paso variable durante el enfriamiento
+  254 :     tcierto +=dtn;
+  255 :
+  256 :         faa  = fa(u,aa,       mm,uu);
+  257 :         faaa = fa(u,aa+dtn*faa,mm,uu);
+  258 :
+  259 :         aa=aa+0.5*dtn*(faa+faaa);
+  260 :     aa=max(min(aa,1.),0.); // truncamiento de austenita a la altura 1.
+  261 :
+  262 :         fmm  = fm(u,aa,mm,       uu);
+  263 :         fmmm = fm(u,aa,mm+dtn*fmm,uu);
+  264 :
+  265 :         mm=mm+0.5*dtn*(fmm+fmmm);
+  266 :     mm=max(min(mm,1.),0.); // martensite truncation at height 1.
+  267 :
+  268 :    dtn = 0.5*dtn;
+  269 :    Source = -0.5*dtn*rho0*Latencia*(faa+faaa + fmm+fmmm) + rho0*c0*u;
+  270 :
+  271 :    coolingdown;
+  272 :    uu = u;
+  273 :    u = 2*w - u;
+  274 :
+  275 :         ausMin = aa[].min;
+  276 :         ausMax = aa[].max;
+  277 :         marMin = mm[].min;
+  278 :         marMax = mm[].max;
+  279 :         cout<<"t="<<tcierto<<",  Austenite: "<<ausMin<<",  "<<ausMax<<",  Martensite: "<<marMin<<",  "<<marMax<<@£—endl;
+  280 :
+  281 : if (grabarsino){
+  282 :    filetemp1 << tcierto<<"  "<< u(XX[0],0.,0.)<<endl;
+  283 :    filetemp2 << tcierto<<"  "<< u(XX[1],0.,0.)<<endl;
+  284 :    filetemp3 << tcierto<<"  "<< u(XX[2],0.,0.)<<endl;
+  285 :    filetemp4 << tcierto<<"  "<< u(XX[3],0.,0.)<<endl;
+  286 :    }
+  287 : }
+  288 :
+  289 : medit("Cooling: Final Temperature", Th3corona, u, order=1);
+  290 : medit("Cooling: Final Austenite", Th3corona, aa, order=1);
+  291 : medit("Cooling: Final Martensite", Th3corona, mm, order=1);
+  292 :
+  293 : WriteGmshFile("induccion-temperature26-2019.msh", "Heating: Final Temperature", u[], Th3corona, Th1)
+   95 :
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :
+  104 :
+  105 :
+  106 :
+  107 :
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :
+  112 :
+  113 :
+  114 :
+  115 :
+  116 :
+  117 :
+  118 :
+  119 :
+  120 :
+  121 :
+  122 :
+  123 :
+  124 :
+  125 :
+  126 :
+  127 :
+  128 :
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :
+  133 :
+  134 :
+  135 :
+  136 :
+  137 :
+  138 :
+  139 :
+  140 :
+  141 :
+  142 :
+  143 :
+  144 :
+  145 :
+  146 :
+  147 :
+  148 :
+  149 :
+  150 :
+  151 :
+  152 :
+  153 :
+  154 :
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :
+  159 :
+  160 :
+  161 :
+  162 :
+  163 :
+  164 :
+  165 :
+  166 :
+  167 :
+  168 :
+  169 :
+  170 :
+  171 :
+  172 :
+  173 :
+  174 :
+  175 :
+  176 :
+  177 :
+   95 : {
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :   ofstream ff ("induccion-temperature26-2019.msh");
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :   {
+  104 :     ff << "$MeshFormat" << endl;
+  105 :     ff << "2.1 0 8" << endl;
+  106 :     ff << "$EndMeshFormat" << endl;
+  107 :   }
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :   {
+  112 :      Th1[int] xh(3);
+  113 :     xh[0] = x;
+  114 :     xh[1] = y;
+  115 :     xh[2] = z;
+  116 :
+  117 :     ff << "$Nodes" << endl;
+  118 :     ff <<  Th1.ndof << endl;
+  119 :
+  120 :     for (int n = 0; n <  Th1.ndof; n++)
+  121 :         {
+  122 :       ff << n+1
+  123 :          << "  " << xh[0][][n]
+  124 :              << "  " << xh[1][][n]
+  125 :              << "  " << xh[2][][n];
+  126 :           ff << endl;
+  127 :     }
+  128 :   }
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :   {
+  133 :     int elmtyp = GmshElmTyp( Th1.ndofK);
+  134 :     int[int] np = En(elmtyp);
+  135 :
+  136 :     ff << "$Elements" << endl;
+  137 :     ff <<  Th1.nt << endl;
+  138 :     for (int e = 0; e <  Th1.nt; e++)
+  139 :         {
+  140 :       ff << e+1 << "  "
+  141 :              << elmtyp << "  "
+  142 :              << "2  "
+  143 :              <<  Th3corona[e].label << "  "
+  144 :              <<  Th3corona[e].region;
+  145 :
+  146 :           for (int n = 0; n <  Th1.ndofK; n++)
+  147 :           {
+  148 :             ff << "  " <<  Th1 (e, np[n]) + 1;
+  149 :           }
+  150 :       ff << endl;
+  151 :     }
+  152 :
+  153 :     ff << "$EndElements" << endl;
+  154 :   }
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :   {
+  159 :     ff << "$" + "Node" + "Data" << endl
+  160 :        << "1" << endl
+  161 :        << "\"" <<  "Heating: Final Temperature" << "\"" << endl
+  162 :        << "1" << endl
+  163 :        << 0.0 << endl
+  164 :        << "3" << endl
+  165 :        << 0 << endl
+  166 :        << "1" << endl
+  167 :        <<  u[].n << endl;
+  168 :
+  169 :     for (int n = 0; n <  u[].n; n++)
+  170 :         {
+  171 :       ff << n+1 << "  " <<  u[][n] << endl;
+  172 :         }
+  173 :
+  174 :     ff << "$End" + "Node" + "Data" << endl;
+  175 :   }
+  176 :
+  177 : }  ;
+  294 : WriteGmshFile("induccion-austenite26-2019.msh", "Heating: Final Austenite", aa[], Th3corona, Th1)
+   95 :
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :
+  104 :
+  105 :
+  106 :
+  107 :
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :
+  112 :
+  113 :
+  114 :
+  115 :
+  116 :
+  117 :
+  118 :
+  119 :
+  120 :
+  121 :
+  122 :
+  123 :
+  124 :
+  125 :
+  126 :
+  127 :
+  128 :
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :
+  133 :
+  134 :
+  135 :
+  136 :
+  137 :
+  138 :
+  139 :
+  140 :
+  141 :
+  142 :
+  143 :
+  144 :
+  145 :
+  146 :
+  147 :
+  148 :
+  149 :
+  150 :
+  151 :
+  152 :
+  153 :
+  154 :
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :
+  159 :
+  160 :
+  161 :
+  162 :
+  163 :
+  164 :
+  165 :
+  166 :
+  167 :
+  168 :
+  169 :
+  170 :
+  171 :
+  172 :
+  173 :
+  174 :
+  175 :
+  176 :
+  177 :
+   95 : {
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :   ofstream ff ("induccion-austenite26-2019.msh");
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :   {
+  104 :     ff << "$MeshFormat" << endl;
+  105 :     ff << "2.1 0 8" << endl;
+  106 :     ff << "$EndMeshFormat" << endl;
+  107 :   }
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :   {
+  112 :      Th1[int] xh(3);
+  113 :     xh[0] = x;
+  114 :     xh[1] = y;
+  115 :     xh[2] = z;
+  116 :
+  117 :     ff << "$Nodes" << endl;
+  118 :     ff <<  Th1.ndof << endl;
+  119 :
+  120 :     for (int n = 0; n <  Th1.ndof; n++)
+  121 :         {
+  122 :       ff << n+1
+  123 :          << "  " << xh[0][][n]
+  124 :              << "  " << xh[1][][n]
+  125 :              << "  " << xh[2][][n];
+  126 :           ff << endl;
+  127 :     }
+  128 :   }
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :   {
+  133 :     int elmtyp = GmshElmTyp( Th1.ndofK);
+  134 :     int[int] np = En(elmtyp);
+  135 :
+  136 :     ff << "$Elements" << endl;
+  137 :     ff <<  Th1.nt << endl;
+  138 :     for (int e = 0; e <  Th1.nt; e++)
+  139 :         {
+  140 :       ff << e+1 << "  "
+  141 :              << elmtyp << "  "
+  142 :              << "2  "
+  143 :              <<  Th3corona[e].label << "  "
+  144 :              <<  Th3corona[e].region;
+  145 :
+  146 :           for (int n = 0; n <  Th1.ndofK; n++)
+  147 :           {
+  148 :             ff << "  " <<  Th1 (e, np[n]) + 1;
+  149 :           }
+  150 :       ff << endl;
+  151 :     }
+  152 :
+  153 :     ff << "$EndElements" << endl;
+  154 :   }
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :   {
+  159 :     ff << "$" + "Node" + "Data" << endl
+  160 :        << "1" << endl
+  161 :        << "\"" <<  "Heating: Final Austenite" << "\"" << endl
+  162 :        << "1" << endl
+  163 :        << 0.0 << endl
+  164 :        << "3" << endl
+  165 :        << 0 << endl
+  166 :        << "1" << endl
+  167 :        <<  aa[].n << endl;
+  168 :
+  169 :     for (int n = 0; n <  aa[].n; n++)
+  170 :         {
+  171 :       ff << n+1 << "  " <<  aa[][n] << endl;
+  172 :         }
+  173 :
+  174 :     ff << "$End" + "Node" + "Data" << endl;
+  175 :   }
+  176 :
+  177 : }  ;
+  295 : WriteGmshFile("induccion-martensite26-2019.msh", "Heating: Final Martensite", mm[], Th3corona, Th1)
+   95 :
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :
+  104 :
+  105 :
+  106 :
+  107 :
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :
+  112 :
+  113 :
+  114 :
+  115 :
+  116 :
+  117 :
+  118 :
+  119 :
+  120 :
+  121 :
+  122 :
+  123 :
+  124 :
+  125 :
+  126 :
+  127 :
+  128 :
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :
+  133 :
+  134 :
+  135 :
+  136 :
+  137 :
+  138 :
+  139 :
+  140 :
+  141 :
+  142 :
+  143 :
+  144 :
+  145 :
+  146 :
+  147 :
+  148 :
+  149 :
+  150 :
+  151 :
+  152 :
+  153 :
+  154 :
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :
+  159 :
+  160 :
+  161 :
+  162 :
+  163 :
+  164 :
+  165 :
+  166 :
+  167 :
+  168 :
+  169 :
+  170 :
+  171 :
+  172 :
+  173 :
+  174 :
+  175 :
+  176 :
+  177 :
+   95 : {
+   96 :
+   97 :   /* Open filename for write */
+   98 :
+   99 :   ofstream ff ("induccion-martensite26-2019.msh");
+  100 :
+  101 :   /* Write header of .mesh file format */
+  102 :
+  103 :   {
+  104 :     ff << "$MeshFormat" << endl;
+  105 :     ff << "2.1 0 8" << endl;
+  106 :     ff << "$EndMeshFormat" << endl;
+  107 :   }
+  108 :
+  109 :   /* Write Nodes */
+  110 :
+  111 :   {
+  112 :      Th1[int] xh(3);
+  113 :     xh[0] = x;
+  114 :     xh[1] = y;
+  115 :     xh[2] = z;
+  116 :
+  117 :     ff << "$Nodes" << endl;
+  118 :     ff <<  Th1.ndof << endl;
+  119 :
+  120 :     for (int n = 0; n <  Th1.ndof; n++)
+  121 :         {
+  122 :       ff << n+1
+  123 :          << "  " << xh[0][][n]
+  124 :              << "  " << xh[1][][n]
+  125 :              << "  " << xh[2][][n];
+  126 :           ff << endl;
+  127 :     }
+  128 :   }
+  129 :
+  130 :   /* Write Elements */
+  131 :
+  132 :   {
+  133 :     int elmtyp = GmshElmTyp( Th1.ndofK);
+  134 :     int[int] np = En(elmtyp);
+  135 :
+  136 :     ff << "$Elements" << endl;
+  137 :     ff <<  Th1.nt << endl;
+  138 :     for (int e = 0; e <  Th1.nt; e++)
+  139 :         {
+  140 :       ff << e+1 << "  "
+  141 :              << elmtyp << "  "
+  142 :              << "2  "
+  143 :              <<  Th3corona[e].label << "  "
+  144 :              <<  Th3corona[e].region;
+  145 :
+  146 :           for (int n = 0; n <  Th1.ndofK; n++)
+  147 :           {
+  148 :             ff << "  " <<  Th1 (e, np[n]) + 1;
+  149 :           }
+  150 :       ff << endl;
+  151 :     }
+  152 :
+  153 :     ff << "$EndElements" << endl;
+  154 :   }
+  155 :
+  156 :   /* Write Data */
+  157 :
+  158 :   {
+  159 :     ff << "$" + "Node" + "Data" << endl
+  160 :        << "1" << endl
+  161 :        << "\"" <<  "Heating: Final Martensite" << "\"" << endl
+  162 :        << "1" << endl
+  163 :        << 0.0 << endl
+  164 :        << "3" << endl
+  165 :        << 0 << endl
+  166 :        << "1" << endl
+  167 :        <<  mm[].n << endl;
+  168 :
+  169 :     for (int n = 0; n <  mm[].n; n++)
+  170 :         {
+  171 :       ff << n+1 << "  " <<  mm[][n] << endl;
+  172 :         }
+  173 :
+  174 :     ff << "$End" + "Node" + "Data" << endl;
+  175 :   }
+  176 :
+  177 : }  ;
+  296 :
+  297 :
+  298 :
+  299 :
+  300 :
+  301 :
+  302 :
+  303 :    sizestack + 1024 =18884  ( 17860 )
+ 
+data file gear-2019.mesh contains only a volume Mesh
+read mesh ok 0 ---- pure volume Mesh
+volume Mesh, num Tetra:= 17907, num Vertice:= 5122 num boundary Triangles:= 8396
+  -- Mesh3 : gear-2019.mesh, space dimension 3, num Tetrahedron elts 17907, num Vertice 5122 num Bordary elts 8396
+XX(0)= 0.166667
+XX(1)= 0.186111
+XX(2)= 0.205556
+XX(3)= 0.225
+Dcorona = 145 ? 145
+  -- FESpace: Nb of Nodes 5122 Nb of DoF 5122
+  -- Solve :
+          min 300.007  max 300.064
+t=0.00025,  Austenite: 0,  0
+  -- Solve :
+          min 300.036  max 300.323
+t=0.001,  Austenite: 0,  0
+  -- Solve :
+          min 300.094  max 300.84
+t=0.00225,  Austenite: 0,  0
+  -- Solve :
+          min 300.18  max 301.618
+t=0.004,  Austenite: 0,  0
+  -- Solve :
+          min 300.294  max 302.657
+t=0.00625,  Austenite: 0,  0
+  -- Solve :
+          min 300.435  max 303.956
+t=0.009,  Austenite: 0,  0
+  -- Solve :
+          min 300.602  max 305.514
+t=0.01225,  Austenite: 0,  0
+  -- Solve :
+          min 300.796  max 307.329
+t=0.016,  Austenite: 0,  0
+  -- Solve :
+          min 301.017  max 309.398
+t=0.02025,  Austenite: 0,  0
+  -- Solve :
+          min 301.262  max 311.717
+t=0.025,  Austenite: 0,  0
+  -- Solve :
+          min 301.533  max 314.282
+t=0.03025,  Austenite: 0,  0
+  -- Solve :
+          min 301.83  max 317.09
+t=0.036,  Austenite: 0,  0
+  -- Solve :
+          min 302.151  max 320.134
+t=0.04225,  Austenite: 0,  0
+  -- Solve :
+          min 302.496  max 323.41
+t=0.049,  Austenite: 0,  0
+  -- Solve :
+          min 302.866  max 326.912
+t=0.05625,  Austenite: 0,  0
+  -- Solve :
+          min 303.26  max 330.635
+t=0.064,  Austenite: 0,  0
+  -- Solve :
+          min 303.679  max 334.57
+t=0.07225,  Austenite: 0,  0
+  -- Solve :
+          min 304.121  max 338.713
+t=0.081,  Austenite: 0,  0
+  -- Solve :
+          min 304.587  max 343.057
+t=0.09025,  Austenite: 0,  0
+  -- Solve :
+          min 305.077  max 347.595
+t=0.1,  Austenite: 0,  0
+  -- Solve :
+          min 305.59  max 352.32
+t=0.11025,  Austenite: 0,  0
+  -- Solve :
+          min 306.127  max 357.225
+t=0.121,  Austenite: 0,  0
+  -- Solve :
+          min 306.688  max 362.304
+t=0.13225,  Austenite: 0,  0
+  -- Solve :
+          min 307.273  max 367.55
+t=0.144,  Austenite: 0,  0
+  -- Solve :
+          min 307.881  max 372.957
+t=0.15625,  Austenite: 0,  0
+  -- Solve :
+          min 308.513  max 378.518
+t=0.169,  Austenite: 0,  0
+  -- Solve :
+          min 309.168  max 384.227
+t=0.18225,  Austenite: 0,  0
+  -- Solve :
+          min 309.847  max 390.078
+t=0.196,  Austenite: 0,  0
+  -- Solve :
+          min 310.55  max 396.066
+t=0.21025,  Austenite: 0,  0
+  -- Solve :
+          min 311.277  max 402.185
+t=0.225,  Austenite: 0,  0
+  -- Solve :
+          min 312.028  max 408.43
+t=0.24025,  Austenite: 0,  0
+  -- Solve :
+          min 312.802  max 414.796
+t=0.256,  Austenite: 0,  0
+  -- Solve :
+          min 313.601  max 421.28
+t=0.27225,  Austenite: 0,  0
+  -- Solve :
+          min 314.423  max 427.876
+t=0.289,  Austenite: 0,  0
+  -- Solve :
+          min 315.27  max 434.583
+t=0.30625,  Austenite: 0,  0
+  -- Solve :
+          min 316.14  max 441.396
+t=0.324,  Austenite: 0,  0
+  -- Solve :
+          min 317.035  max 448.312
+t=0.34225,  Austenite: 0,  0
+  -- Solve :
+          min 317.954  max 455.331
+t=0.361,  Austenite: 0,  0
+  -- Solve :
+          min 318.897  max 462.45
+t=0.38025,  Austenite: 0,  0
+  -- Solve :
+          min 319.864  max 469.668
+t=0.4,  Austenite: 0,  0
+  -- Solve :
+          min 320.856  max 476.979
+t=0.42025,  Austenite: 0,  0
+  -- Solve :
+          min 321.871  max 484.367
+t=0.441,  Austenite: 0,  0
+  -- Solve :
+          min 322.91  max 491.814
+t=0.46225,  Austenite: 0,  0
+  -- Solve :
+          min 323.974  max 499.309
+t=0.484,  Austenite: 0,  0
+  -- Solve :
+          min 325.061  max 506.849
+t=0.50625,  Austenite: 0,  0
+  -- Solve :
+          min 326.173  max 514.428
+t=0.529,  Austenite: 0,  0
+  -- Solve :
+          min 327.309  max 522.041
+t=0.55225,  Austenite: 0,  0
+  -- Solve :
+          min 328.47  max 529.684
+t=0.576,  Austenite: 0,  0
+  -- Solve :
+          min 329.655  max 537.352
+t=0.60025,  Austenite: 0,  0
+  -- Solve :
+          min 330.864  max 545.041
+t=0.625,  Austenite: 0,  0
+  -- Solve :
+          min 332.099  max 552.747
+t=0.65025,  Austenite: 0,  0
+  -- Solve :
+          min 333.358  max 560.468
+t=0.676,  Austenite: 0,  0
+  -- Solve :
+          min 334.641  max 568.202
+t=0.70225,  Austenite: 0,  0
+  -- Solve :
+          min 335.949  max 575.947
+t=0.729,  Austenite: 0,  0
+  -- Solve :
+          min 337.283  max 583.7
+t=0.75625,  Austenite: 0,  0
+  -- Solve :
+          min 338.641  max 591.461
+t=0.784,  Austenite: 0,  0
+  -- Solve :
+          min 340.024  max 599.228
+t=0.81225,  Austenite: 0,  0
+  -- Solve :
+          min 341.431  max 607
+t=0.841,  Austenite: 0,  0
+  -- Solve :
+          min 342.864  max 614.776
+t=0.87025,  Austenite: 0,  0
+  -- Solve :
+          min 344.322  max 622.555
+t=0.9,  Austenite: 0,  0
+  -- Solve :
+          min 345.805  max 630.337
+t=0.93025,  Austenite: 0,  0
+  -- Solve :
+          min 347.312  max 638.12
+t=0.961,  Austenite: 0,  0
+  -- Solve :
+          min 348.844  max 645.905
+t=0.99225,  Austenite: 0,  0
+  -- Solve :
+          min 350.4  max 653.692
+t=1.024,  Austenite: 0,  0
+  -- Solve :
+          min 351.982  max 661.48
+t=1.05625,  Austenite: 0,  0
+  -- Solve :
+          min 353.587  max 669.271
+t=1.089,  Austenite: 0,  0
+  -- Solve :
+          min 355.218  max 677.062
+t=1.12225,  Austenite: 0,  0
+  -- Solve :
+          min 356.872  max 684.825
+t=1.156,  Austenite: 0,  0
+  -- Solve :
+          min 358.551  max 692.518
+t=1.19025,  Austenite: 0,  0
+  -- Solve :
+          min 360.255  max 700.122
+t=1.225,  Austenite: 0,  0
+  -- Solve :
+          min 361.983  max 707.641
+t=1.26025,  Austenite: 0,  0
+  -- Solve :
+          min 363.735  max 715.075
+t=1.296,  Austenite: 0,  0
+  -- Solve :
+          min 365.513  max 722.424
+t=1.33225,  Austenite: 0,  0
+  -- Solve :
+          min 367.315  max 729.686
+t=1.369,  Austenite: 0,  0
+  -- Solve :
+          min 369.143  max 736.859
+t=1.40625,  Austenite: 0,  0
+  -- Solve :
+          min 370.997  max 743.941
+t=1.444,  Austenite: 0,  0
+  -- Solve :
+          min 372.877  max 750.928
+t=1.48225,  Austenite: 0,  0
+  -- Solve :
+          min 374.783  max 757.821
+t=1.521,  Austenite: 0,  0
+  -- Solve :
+          min 376.715  max 764.616
+t=1.56025,  Austenite: 0,  0
+  -- Solve :
+          min 378.672  max 771.313
+t=1.6,  Austenite: 0,  0
+  -- Solve :
+          min 380.656  max 777.912
+t=1.64025,  Austenite: 0,  0
+  -- Solve :
+          min 382.665  max 784.412
+t=1.681,  Austenite: 0,  0
+  -- Solve :
+          min 384.7  max 790.815
+t=1.72225,  Austenite: 0,  0
+  -- Solve :
+          min 386.759  max 797.121
+t=1.764,  Austenite: 0,  0
+  -- Solve :
+          min 388.845  max 803.333
+t=1.80625,  Austenite: 0,  0
+  -- Solve :
+          min 390.955  max 809.452
+t=1.849,  Austenite: 0,  0
+  -- Solve :
+          min 393.091  max 815.483
+t=1.89225,  Austenite: 0,  0
+  -- Solve :
+          min 395.251  max 821.425
+t=1.936,  Austenite: 0,  0
+  -- Solve :
+          min 397.436  max 827.282
+t=1.98025,  Austenite: 0,  0
+  -- Solve :
+          min 399.647  max 833.055
+t=2.025,  Austenite: 0,  0
+  -- Solve :
+          min 401.882  max 838.746
+t=2.07025,  Austenite: 0,  0
+  -- Solve :
+          min 404.141  max 844.355
+t=2.116,  Austenite: 0,  0
+  -- Solve :
+          min 406.426  max 849.885
+t=2.16225,  Austenite: 0,  0
+  -- Solve :
+          min 408.735  max 855.348
+t=2.209,  Austenite: 0,  0
+  -- Solve :
+          min 411.069  max 860.783
+t=2.25625,  Austenite: 0,  0
+  -- Solve :
+          min 413.427  max 866.226
+t=2.304,  Austenite: 0,  0
+  -- Solve :
+          min 415.809  max 871.685
+t=2.35225,  Austenite: 0,  0
+  -- Solve :
+          min 418.215  max 877.158
+t=2.401,  Austenite: 0,  0
+  -- Solve :
+          min 420.645  max 882.643
+t=2.45025,  Austenite: 0,  0
+  -- Solve :
+          min 423.098  max 888.137
+t=2.5,  Austenite: 0,  0
+  -- Solve :
+          min 425.573  max 893.642
+t=2.55025,  Austenite: 0,  0
+  -- Solve :
+          min 428.071  max 899.157
+t=2.601,  Austenite: 0,  0
+  -- Solve :
+          min 430.59  max 904.684
+t=2.65225,  Austenite: 0,  0
+  -- Solve :
+          min 433.131  max 910.227
+t=2.704,  Austenite: 0,  0
+  -- Solve :
+          min 435.692  max 915.788
+t=2.75625,  Austenite: 0,  0
+  -- Solve :
+          min 438.274  max 921.369
+t=2.809,  Austenite: 0,  0
+  -- Solve :
+          min 440.875  max 926.974
+t=2.86225,  Austenite: 0,  0
+  -- Solve :
+          min 443.496  max 932.602
+t=2.916,  Austenite: 0,  0
+  -- Solve :
+          min 446.136  max 938.256
+t=2.97025,  Austenite: 0,  0
+  -- Solve :
+          min 448.795  max 943.939
+t=3.025,  Austenite: 0,  0
+  -- Solve :
+          min 451.472  max 949.653
+t=3.08025,  Austenite: 0,  0
+  -- Solve :
+          min 454.168  max 955.398
+t=3.136,  Austenite: 0,  0
+  -- Solve :
+          min 456.881  max 961.175
+t=3.19225,  Austenite: 0,  0
+  -- Solve :
+          min 459.612  max 967.138
+t=3.249,  Austenite: 0,  0
+  -- Solve :
+          min 462.361  max 973.17
+t=3.30625,  Austenite: 0,  0
+  -- Solve :
+          min 465.127  max 979.23
+t=3.364,  Austenite: 0,  0
+  -- Solve :
+          min 467.911  max 985.315
+t=3.42225,  Austenite: 0,  0
+  -- Solve :
+          min 470.711  max 991.428
+t=3.481,  Austenite: 0,  0
+  -- Solve :
+          min 473.528  max 997.566
+t=3.54025,  Austenite: 0,  0
+  -- Solve :
+          min 476.358  max 1003.73
+t=3.6,  Austenite: 0,  0
+  -- Solve :
+          min 479.199  max 1009.77
+t=3.66025,  Austenite: 0,  0.00210249
+  -- Solve :
+          min 482.014  max 1015.44
+t=3.721,  Austenite: 0,  0.00763032
+  -- Solve :
+          min 484.831  max 1020.68
+t=3.78225,  Austenite: 0,  0.0164492
+  -- Solve :
+          min 487.656  max 1025.5
+t=3.844,  Austenite: 0,  0.0283864
+  -- Solve :
+          min 490.489  max 1029.95
+t=3.90625,  Austenite: 0,  0.0432296
+  -- Solve :
+          min 493.329  max 1034.05
+t=3.969,  Austenite: 0,  0.0607294
+  -- Solve :
+          min 496.175  max 1037.83
+t=4.03225,  Austenite: 0,  0.0806097
+  -- Solve :
+          min 499.028  max 1041.32
+t=4.096,  Austenite: 0,  0.102578
+  -- Solve :
+          min 501.885  max 1044.56
+t=4.16025,  Austenite: 0,  0.126336
+  -- Solve :
+          min 504.749  max 1047.58
+t=4.225,  Austenite: 0,  0.151594
+  -- Solve :
+          min 507.618  max 1050.42
+t=4.29025,  Austenite: 0,  0.178082
+  -- Solve :
+          min 510.492  max 1053.16
+t=4.356,  Austenite: 0,  0.205555
+  -- Solve :
+          min 513.372  max 1056.03
+t=4.42225,  Austenite: 0,  0.233802
+  -- Solve :
+          min 516.256  max 1058.8
+t=4.489,  Austenite: 0,  0.262639
+  -- Solve :
+          min 519.146  max 1061.48
+t=4.55625,  Austenite: 0,  0.291917
+  -- Solve :
+          min 522.04  max 1064.1
+t=4.624,  Austenite: 0,  0.321512
+  -- Solve :
+          min 524.939  max 1066.66
+t=4.69225,  Austenite: 0,  0.352932
+  -- Solve :
+          min 527.841  max 1069.19
+t=4.761,  Austenite: 0,  0.385132
+  -- Solve :
+          min 530.749  max 1071.69
+t=4.83025,  Austenite: 0,  0.417572
+  -- Solve :
+          min 533.66  max 1074.17
+t=4.9,  Austenite: 0,  0.450165
+  -- Solve :
+          min 536.575  max 1076.62
+t=4.97025,  Austenite: 0,  0.482824
+  -- Solve :
+          min 539.493  max 1079.04
+t=5.041,  Austenite: 0,  0.51547
+  -- Solve :
+          min 542.415  max 1081.46
+t=5.11225,  Austenite: 0,  0.548039
+  -- Solve :
+          min 545.339  max 1083.86
+t=5.184,  Austenite: 0,  0.580484
+  -- Solve :
+          min 548.265  max 1086.26
+t=5.25625,  Austenite: 0,  0.612767
+  -- Solve :
+          min 551.194  max 1088.66
+t=5.329,  Austenite: 0,  0.644865
+  -- Solve :
+          min 554.125  max 1091.06
+t=5.40225,  Austenite: 0,  0.676763
+  -- Solve :
+          min 557.058  max 1093.46
+t=5.476,  Austenite: 0,  0.70846
+  -- Solve :
+          min 559.994  max 1095.87
+t=5.55025,  Austenite: 0,  0.739964
+  -- Solve :
+          min 562.932  max 1098.29
+t=5.625,  Austenite: 0,  0.771292
+  -- Solve :
+          min 565.875  max 1100.73
+t=5.70025,  Austenite: 0,  0.802462
+  -- Solve :
+          min 568.821  max 1103.18
+t=5.776,  Austenite: 0,  0.833514
+  -- Solve :
+          min 571.771  max 1105.74
+t=5.85225,  Austenite: 0,  0.863407
+  -- Solve :
+          min 574.724  max 1108.47
+t=5.929,  Austenite: 0,  0.892233
+  -- Solve :
+          min 577.681  max 1111.31
+t=6.00625,  Austenite: 0,  0.920886
+  -- Solve :
+          min 580.641  max 1114.18
+t=6.084,  Austenite: 0,  0.949551
+  -- Solve :
+          min 583.605  max 1117.73
+t=6.16225,  Austenite: 0,  0.969077
+  -- Solve :
+          min 586.57  max 1122.39
+t=6.241,  Austenite: 0,  0.981666
+  -- Solve :
+          min 589.537  max 1127.8
+t=6.32025,  Austenite: 0,  0.989613
+  -- Solve :
+          min 592.506  max 1133.66
+t=6.4,  Austenite: 0,  0.994452
+  -- Solve :
+          min 595.475  max 1139.78
+t=6.48025,  Austenite: 0,  0.997254
+  -- Solve :
+          min 598.446  max 1146.05
+t=6.561,  Austenite: 0,  0.998767
+  -- Solve :
+          min 601.418  max 1152.48
+t=6.64225,  Austenite: 0,  0.999514
+  -- Solve :
+          min 604.393  max 1159.63
+t=6.724,  Austenite: 0,  0.999838
+Power reduction no. 1, Joule*reduction(1)= 0.3
+  -- Solve :
+          min 606.76  max 1165.05
+t=6.80625,  Austenite: 0,  0.999958
+Power reduction no. 2, Joule*reduction(2)= 0.2
+  -- Solve :
+          min 608.097  max 1167.39
+t=6.889,  Austenite: 0,  0.99999
+  -- Solve :
+          min 609.017  max 1168.47
+t=6.97225,  Austenite: 0,  0.999998
+version de medit ffmedit.exe -popen -filebin -addsol 1  Austenite-t=7
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Austenite-t=7
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.14
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  29.52
+ Thank you for using Medit.
+  -- Solve :
+          min 609.944  max 1169.58
+t=7.056,  Austenite: 0,  1
+Power reduction no. 3, Joule*reduction(3)= 0.15
+version de medit ffmedit.exe -popen -filebin -addsol 1  Austenite-t=7
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Austenite-t=7
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  2.80
+ Thank you for using Medit.
+  -- Solve :
+          min 610.727  max 1170.25
+t=7.14025,  Austenite: 0,  1
+  -- Solve :
+          min 611.366  max 1170.46
+t=7.225,  Austenite: 0,  1
+  -- Solve :
+          min 612.007  max 1170.68
+t=7.31025,  Austenite: 0,  1
+  -- Solve :
+          min 612.649  max 1170.88
+t=7.396,  Austenite: 0,  1
+  -- Solve :
+          min 613.291  max 1171.09
+t=7.48225,  Austenite: 0,  1
+  -- Solve :
+          min 613.933  max 1171.28
+t=7.569,  Austenite: 0,  1
+  -- Solve :
+          min 614.574  max 1171.47
+t=7.65625,  Austenite: 0,  1
+  -- Solve :
+          min 615.216  max 1171.66
+t=7.744,  Austenite: 0,  1
+  -- Solve :
+          min 615.856  max 1171.84
+t=7.83225,  Austenite: 0,  1
+  -- Solve :
+          min 616.497  max 1172.02
+t=7.921,  Austenite: 0,  1
+  -- Solve :
+          min 617.137  max 1172.19
+t=8.01025,  Austenite: 0,  1
+  -- Solve :
+          min 617.778  max 1172.36
+t=8.1,  Austenite: 0,  1
+  -- Solve :
+          min 618.418  max 1172.53
+t=8.19025,  Austenite: 0,  1
+  -- Solve :
+          min 619.058  max 1172.7
+t=8.281,  Austenite: 0,  1
+  -- Solve :
+          min 619.698  max 1172.86
+t=8.37225,  Austenite: 0,  1
+  -- Solve :
+          min 620.338  max 1173.03
+t=8.464,  Austenite: 0,  1
+  -- Solve :
+          min 620.978  max 1173.19
+t=8.55625,  Austenite: 0,  1
+  -- Solve :
+          min 621.619  max 1173.36
+t=8.649,  Austenite: 0,  1
+  -- Solve :
+          min 622.259  max 1173.52
+t=8.74225,  Austenite: 0,  1
+  -- Solve :
+          min 622.9  max 1173.7
+t=8.836,  Austenite: 0,  1
+  -- Solve :
+          min 623.541  max 1174.03
+t=8.93025,  Austenite: 0,  1
+version de medit ffmedit.exe -popen -filebin -addsol 1  Austenite-t=10
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Austenite-t=10
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  20.67
+ Thank you for using Medit.
+  -- Solve :
+          min 624.182  max 1174.37
+t=9.025,  Austenite: 0,  1
+version de medit ffmedit.exe -popen -filebin -addsol 1  Austenite-t=10
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Austenite-t=10
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  2.02
+ Thank you for using Medit.
+  -- Solve :
+          min 624.823  max 1174.7
+t=9.12025,  Austenite: 0,  1
+  -- Solve :
+          min 625.464  max 1175.03
+t=9.216,  Austenite: 0,  1
+Power reduction no. 4, Joule*reduction(4)= 0.15
+  -- Solve :
+          min 626.071  max 1175.25
+t=9.31225,  Austenite: 0,  1
+  -- Solve :
+          min 626.643  max 1175.36
+t=9.409,  Austenite: 0,  1
+  -- Solve :
+          min 627.215  max 1175.47
+t=9.50625,  Austenite: 0,  1
+  -- Solve :
+          min 627.788  max 1175.58
+t=9.604,  Austenite: 0,  1
+  -- Solve :
+          min 628.361  max 1175.69
+t=9.70225,  Austenite: 0,  1
+  -- Solve :
+          min 628.934  max 1175.8
+t=9.801,  Austenite: 0,  1
+  -- Solve :
+          min 629.507  max 1175.91
+t=9.90025,  Austenite: 0,  1
+  -- Solve :
+          min 630.081  max 1176.01
+t=10,  Austenite: 0,  1
+version de medit ffmedit.exe -popen -filebin -addsol 1  Heating:
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Heating:
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  2.48
+ Thank you for using Medit.
+version de medit ffmedit.exe -popen -filebin -addsol 1  Heating:
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Heating:
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  1.56
+ Thank you for using Medit.
+  -- Solve :
+          min 630.368  max 1176.09
+t=10.0002,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.373  max 1176.2
+t=10.0006,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.383  max 1176.42
+t=10.0014,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.397  max 1176.74
+t=10.0025,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.416  max 1177.17
+t=10.0039,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.439  max 1177.71
+t=10.0056,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.467  max 1178.35
+t=10.0077,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.498  max 1179.08
+t=10.01,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.534  max 1179.92
+t=10.0127,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.572  max 1180.85
+t=10.0156,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.614  max 1181.87
+t=10.0189,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.659  max 1182.98
+t=10.0225,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.705  max 1184.18
+t=10.0264,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.754  max 1185.45
+t=10.0306,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.804  max 1187.02
+t=10.0352,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.856  max 1189.72
+t=10.04,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.907  max 1192.52
+t=10.0452,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 630.791  max 1195.4
+t=10.0506,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 628.42  max 1198.36
+t=10.0564,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 625.941  max 1201.38
+t=10.0625,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 623.358  max 1204.44
+t=10.0689,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 620.674  max 1207.54
+t=10.0756,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 617.894  max 1210.65
+t=10.0827,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 615.022  max 1213.77
+t=10.09,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 612.061  max 1216.87
+t=10.0977,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 609.015  max 1219.96
+t=10.1056,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 605.89  max 1223.01
+t=10.1139,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 602.674  max 1226.13
+t=10.1225,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 599.304  max 1229.71
+t=10.1314,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 595.867  max 1233.26
+t=10.1406,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 592.367  max 1236.77
+t=10.1502,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 588.809  max 1240.23
+t=10.16,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 585.197  max 1243.62
+t=10.1702,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 581.536  max 1246.94
+t=10.1806,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 577.831  max 1250.18
+t=10.1914,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 574.086  max 1253.33
+t=10.2025,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 570.306  max 1256.38
+t=10.2139,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 566.496  max 1259.32
+t=10.2256,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 562.66  max 1262.14
+t=10.2377,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 558.802  max 1264.83
+t=10.25,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 554.927  max 1267.4
+t=10.2627,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 551.04  max 1269.82
+t=10.2756,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 547.143  max 1272.1
+t=10.2889,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 543.242  max 1274.22
+t=10.3025,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 539.34  max 1276.19
+t=10.3164,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 535.442  max 1278
+t=10.3306,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 531.551  max 1279.65
+t=10.3452,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 527.671  max 1281.13
+t=10.36,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 523.805  max 1282.43
+t=10.3752,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 519.957  max 1283.57
+t=10.3906,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 516.13  max 1284.52
+t=10.4064,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 512.328  max 1285.3
+t=10.4225,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 508.553  max 1285.91
+t=10.4389,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 504.808  max 1286.33
+t=10.4556,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 501.097  max 1286.58
+t=10.4727,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 497.421  max 1287.37
+t=10.49,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 493.783  max 1289.3
+t=10.5077,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 490.186  max 1291.13
+t=10.5256,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 486.632  max 1292.86
+t=10.5439,  Austenite: 0,  1,  Martensite: 0,  0
+  -- Solve :
+          min 483.123  max 1294.48
+t=10.5625,  Austenite: 0,  1,  Martensite: 0,  0.0253624
+  -- Solve :
+          min 479.66  max 1295.99
+t=10.5814,  Austenite: 0,  1,  Martensite: 0,  0.0504776
+  -- Solve :
+          min 476.246  max 1297.39
+t=10.6006,  Austenite: 0,  1,  Martensite: 0,  0.0753302
+  -- Solve :
+          min 472.882  max 1298.68
+t=10.6202,  Austenite: 0,  1,  Martensite: 0,  0.0999057
+  -- Solve :
+          min 469.57  max 1299.85
+t=10.64,  Austenite: 0,  1,  Martensite: 0,  0.12419
+  -- Solve :
+          min 466.311  max 1300.91
+t=10.6602,  Austenite: 0,  1,  Martensite: 0,  0.148171
+  -- Solve :
+          min 463.106  max 1301.86
+t=10.6806,  Austenite: 0,  1,  Martensite: 0,  0.171836
+  -- Solve :
+          min 459.956  max 1302.68
+t=10.7014,  Austenite: 0,  1,  Martensite: 0,  0.195173
+  -- Solve :
+          min 456.863  max 1303.38
+t=10.7225,  Austenite: 0,  1,  Martensite: 0,  0.218172
+  -- Solve :
+          min 453.827  max 1303.97
+t=10.7439,  Austenite: 0,  1,  Martensite: 0,  0.240823
+  -- Solve :
+          min 450.849  max 1304.43
+t=10.7656,  Austenite: 0,  1,  Martensite: 0,  0.263116
+  -- Solve :
+          min 447.93  max 1304.78
+t=10.7877,  Austenite: 0,  1,  Martensite: 0,  0.285044
+  -- Solve :
+          min 445.069  max 1306.21
+t=10.81,  Austenite: 0,  1,  Martensite: 0,  0.306597
+  -- Solve :
+          min 442.268  max 1307.81
+t=10.8327,  Austenite: 0,  1,  Martensite: 0,  0.32777
+  -- Solve :
+          min 439.526  max 1309.33
+t=10.8556,  Austenite: 0,  1,  Martensite: 0,  0.348556
+  -- Solve :
+          min 436.844  max 1310.76
+t=10.8789,  Austenite: 0,  1,  Martensite: 0,  0.368949
+  -- Solve :
+          min 434.222  max 1312.1
+t=10.9025,  Austenite: 0,  1,  Martensite: 0,  0.388944
+  -- Solve :
+          min 431.659  max 1313.34
+t=10.9264,  Austenite: 0,  1,  Martensite: 0,  0.408537
+  -- Solve :
+          min 429.095  max 1314.48
+t=10.9506,  Austenite: 0,  1,  Martensite: 0,  0.427725
+  -- Solve :
+          min 426.456  max 1315.53
+t=10.9752,  Austenite: 0,  1,  Martensite: 0,  0.446505
+  -- Solve :
+          min 423.873  max 1316.47
+t=11,  Austenite: 0,  1,  Martensite: 0,  0.464874
+  -- Solve :
+          min 421.346  max 1317.32
+t=11.0252,  Austenite: 0,  1,  Martensite: 0,  0.48283
+  -- Solve :
+          min 418.874  max 1318.06
+t=11.0506,  Austenite: 0,  1,  Martensite: 0,  0.500373
+  -- Solve :
+          min 416.459  max 1318.7
+t=11.0764,  Austenite: 0,  1,  Martensite: 0,  0.517501
+  -- Solve :
+          min 414.097  max 1319.23
+t=11.1025,  Austenite: 0,  1,  Martensite: 0,  0.534215
+  -- Solve :
+          min 411.791  max 1319.66
+t=11.1289,  Austenite: 0,  1,  Martensite: 0,  0.550516
+  -- Solve :
+          min 409.538  max 1319.98
+t=11.1556,  Austenite: 0,  1,  Martensite: 0,  0.566405
+  -- Solve :
+          min 407.338  max 1320.2
+t=11.1827,  Austenite: 0,  1,  Martensite: 0,  0.581882
+  -- Solve :
+          min 405.191  max 1320.31
+t=11.21,  Austenite: 0,  1,  Martensite: 0,  0.59695
+  -- Solve :
+          min 403.096  max 1320.31
+t=11.2377,  Austenite: 0,  1,  Martensite: 0,  0.611612
+  -- Solve :
+          min 401.051  max 1320.21
+t=11.2656,  Austenite: 0,  1,  Martensite: 0,  0.625871
+  -- Solve :
+          min 399.057  max 1320
+t=11.2939,  Austenite: 0,  1,  Martensite: 0,  0.639729
+  -- Solve :
+          min 397.112  max 1319.68
+t=11.3225,  Austenite: 0,  1,  Martensite: 0,  0.65319
+  -- Solve :
+          min 395.216  max 1319.25
+t=11.3514,  Austenite: 0,  1,  Martensite: 0,  0.66626
+  -- Solve :
+          min 393.367  max 1318.72
+t=11.3806,  Austenite: 0,  1,  Martensite: 0,  0.678941
+  -- Solve :
+          min 391.565  max 1318.08
+t=11.4102,  Austenite: 0,  1,  Martensite: 0,  0.691239
+  -- Solve :
+          min 389.808  max 1317.33
+t=11.44,  Austenite: 0,  1,  Martensite: 0,  0.703158
+  -- Solve :
+          min 388.095  max 1316.48
+t=11.4702,  Austenite: 0,  1,  Martensite: 0,  0.714705
+  -- Solve :
+          min 386.427  max 1315.52
+t=11.5006,  Austenite: 0,  1,  Martensite: 0,  0.725884
+  -- Solve :
+          min 384.8  max 1314.46
+t=11.5314,  Austenite: 0,  1,  Martensite: 0,  0.736701
+  -- Solve :
+          min 383.216  max 1313.99
+t=11.5625,  Austenite: 0,  1,  Martensite: 0,  0.747164
+  -- Solve :
+          min 381.672  max 1314.95
+t=11.5939,  Austenite: 0,  1,  Martensite: 0,  0.757276
+  -- Solve :
+          min 380.167  max 1315.84
+t=11.6256,  Austenite: 0,  1,  Martensite: 0,  0.767046
+  -- Solve :
+          min 378.7  max 1316.67
+t=11.6577,  Austenite: 0,  1,  Martensite: 0,  0.77648
+  -- Solve :
+          min 377.271  max 1317.44
+t=11.69,  Austenite: 0,  1,  Martensite: 0,  0.785584
+  -- Solve :
+          min 375.879  max 1318.15
+t=11.7227,  Austenite: 0,  1,  Martensite: 0,  0.794366
+  -- Solve :
+          min 374.521  max 1318.8
+t=11.7556,  Austenite: 0,  1,  Martensite: 0,  0.802832
+  -- Solve :
+          min 373.198  max 1319.38
+t=11.7889,  Austenite: 0,  1,  Martensite: 0,  0.810989
+  -- Solve :
+          min 371.847  max 1319.9
+t=11.8225,  Austenite: 0,  1,  Martensite: 0,  0.818845
+  -- Solve :
+          min 370.485  max 1320.36
+t=11.8564,  Austenite: 0,  1,  Martensite: 0,  0.826406
+  -- Solve :
+          min 369.156  max 1320.75
+t=11.8906,  Austenite: 0,  1,  Martensite: 0,  0.83368
+  -- Solve :
+          min 367.859  max 1321.08
+t=11.9252,  Austenite: 0,  1,  Martensite: 0,  0.840674
+  -- Solve :
+          min 366.594  max 1321.34
+t=11.96,  Austenite: 0,  1,  Martensite: 0,  0.847396
+  -- Solve :
+          min 365.359  max 1321.54
+t=11.9952,  Austenite: 0,  1,  Martensite: 0,  0.853852
+  -- Solve :
+          min 364.154  max 1321.68
+t=12.0306,  Austenite: 0,  1,  Martensite: 0,  0.860051
+  -- Solve :
+          min 362.978  max 1321.75
+t=12.0664,  Austenite: 0,  1,  Martensite: 0,  0.865998
+  -- Solve :
+          min 361.829  max 1321.75
+t=12.1025,  Austenite: 0,  1,  Martensite: 0,  0.871702
+  -- Solve :
+          min 360.709  max 1321.69
+t=12.1389,  Austenite: 0,  1,  Martensite: 0,  0.87717
+  -- Solve :
+          min 359.614  max 1321.57
+t=12.1756,  Austenite: 0,  1,  Martensite: 0,  0.882408
+  -- Solve :
+          min 358.546  max 1321.38
+t=12.2127,  Austenite: 0,  1,  Martensite: 0,  0.887424
+  -- Solve :
+          min 357.503  max 1321.12
+t=12.25,  Austenite: 0,  1,  Martensite: 0,  0.892225
+  -- Solve :
+          min 356.484  max 1320.8
+t=12.2877,  Austenite: 0,  1,  Martensite: 0,  0.896818
+  -- Solve :
+          min 355.488  max 1320.42
+t=12.3256,  Austenite: 0,  1,  Martensite: 0,  0.901209
+  -- Solve :
+          min 354.516  max 1319.97
+t=12.3639,  Austenite: 0,  1,  Martensite: 0,  0.905405
+  -- Solve :
+          min 353.566  max 1319.46
+t=12.4025,  Austenite: 0,  1,  Martensite: 0,  0.909413
+  -- Solve :
+          min 352.637  max 1318.89
+t=12.4414,  Austenite: 0,  1,  Martensite: 0,  0.91324
+  -- Solve :
+          min 351.73  max 1318.25
+t=12.4806,  Austenite: 0,  1,  Martensite: 0,  0.916891
+  -- Solve :
+          min 350.843  max 1317.55
+t=12.5202,  Austenite: 0,  1,  Martensite: 0,  0.920374
+  -- Solve :
+          min 349.975  max 1316.79
+t=12.56,  Austenite: 0,  1,  Martensite: 0,  0.923693
+  -- Solve :
+          min 349.127  max 1315.96
+t=12.6002,  Austenite: 0,  1,  Martensite: 0,  0.926856
+  -- Solve :
+          min 348.298  max 1315.08
+t=12.6406,  Austenite: 0,  1,  Martensite: 0,  0.929868
+  -- Solve :
+          min 347.487  max 1314.13
+t=12.6814,  Austenite: 0,  1,  Martensite: 0,  0.932735
+  -- Solve :
+          min 346.694  max 1313.12
+t=12.7225,  Austenite: 0,  1,  Martensite: 0,  0.935462
+  -- Solve :
+          min 345.917  max 1312.05
+t=12.7639,  Austenite: 0,  1,  Martensite: 0,  0.938056
+  -- Solve :
+          min 345.158  max 1310.92
+t=12.8056,  Austenite: 0,  1,  Martensite: 0,  0.940521
+  -- Solve :
+          min 344.415  max 1309.74
+t=12.8477,  Austenite: 0,  1,  Martensite: 0,  0.942862
+  -- Solve :
+          min 343.687  max 1308.49
+t=12.89,  Austenite: 0,  1,  Martensite: 0,  0.945085
+  -- Solve :
+          min 342.975  max 1307.19
+t=12.9327,  Austenite: 0,  1,  Martensite: 0,  0.947195
+  -- Solve :
+          min 342.278  max 1305.82
+t=12.9756,  Austenite: 0,  1,  Martensite: 0,  0.949197
+  -- Solve :
+          min 341.596  max 1304.4
+t=13.0189,  Austenite: 0,  1,  Martensite: 0,  0.951094
+  -- Solve :
+          min 340.928  max 1302.93
+t=13.0625,  Austenite: 0,  1,  Martensite: 0,  0.952892
+  -- Solve :
+          min 340.274  max 1301.4
+t=13.1064,  Austenite: 0,  1,  Martensite: 0,  0.954595
+  -- Solve :
+          min 339.633  max 1299.81
+t=13.1506,  Austenite: 0,  1,  Martensite: 0,  0.956207
+  -- Solve :
+          min 339.006  max 1298.17
+t=13.1952,  Austenite: 0,  1,  Martensite: 0,  0.957733
+  -- Solve :
+          min 338.392  max 1296.48
+t=13.24,  Austenite: 0,  1,  Martensite: 0,  0.959176
+  -- Solve :
+          min 337.79  max 1294.73
+t=13.2852,  Austenite: 0,  1,  Martensite: 0,  0.96054
+  -- Solve :
+          min 337.201  max 1292.93
+t=13.3306,  Austenite: 0,  1,  Martensite: 0,  0.961829
+  -- Solve :
+          min 336.623  max 1291.08
+t=13.3764,  Austenite: 0,  1,  Martensite: 0,  0.963046
+  -- Solve :
+          min 336.058  max 1289.18
+t=13.4225,  Austenite: 0,  1,  Martensite: 0,  0.964195
+  -- Solve :
+          min 335.504  max 1287.23
+t=13.4689,  Austenite: 0,  1,  Martensite: 0,  0.965279
+  -- Solve :
+          min 334.961  max 1285.23
+t=13.5156,  Austenite: 0,  1,  Martensite: 0,  0.966301
+  -- Solve :
+          min 334.43  max 1283.19
+t=13.5627,  Austenite: 0,  1,  Martensite: 0,  0.967264
+  -- Solve :
+          min 333.909  max 1281.09
+t=13.61,  Austenite: 0,  1,  Martensite: 0,  0.968172
+  -- Solve :
+          min 333.399  max 1278.95
+t=13.6577,  Austenite: 0,  1,  Martensite: 0,  0.969027
+  -- Solve :
+          min 332.899  max 1276.77
+t=13.7056,  Austenite: 0,  1,  Martensite: 0,  0.969832
+  -- Solve :
+          min 332.41  max 1274.54
+t=13.7539,  Austenite: 0,  1,  Martensite: 0,  0.970589
+  -- Solve :
+          min 331.93  max 1273.02
+t=13.8025,  Austenite: 0,  1,  Martensite: 0,  0.9713
+  -- Solve :
+          min 331.46  max 1271.5
+t=13.8514,  Austenite: 0,  1,  Martensite: 0,  0.971969
+  -- Solve :
+          min 331  max 1269.93
+t=13.9006,  Austenite: 0,  1,  Martensite: 0,  0.972598
+  -- Solve :
+          min 330.549  max 1268.32
+t=13.9502,  Austenite: 0,  1,  Martensite: 0,  0.973188
+  -- Solve :
+          min 330.108  max 1266.66
+t=14,  Austenite: 0,  1,  Martensite: 0,  0.973742
+  -- Solve :
+          min 329.675  max 1264.96
+t=14.0502,  Austenite: 0,  1,  Martensite: 0,  0.974262
+  -- Solve :
+          min 329.251  max 1263.21
+t=14.1006,  Austenite: 0,  1,  Martensite: 0,  0.974749
+  -- Solve :
+          min 328.494  max 1261.43
+t=14.1514,  Austenite: 0,  1,  Martensite: 0,  0.975205
+  -- Solve :
+          min 327.715  max 1259.6
+t=14.2025,  Austenite: 0,  1,  Martensite: 0,  0.975633
+  -- Solve :
+          min 326.964  max 1257.73
+t=14.2539,  Austenite: 0,  1,  Martensite: 0,  0.976034
+  -- Solve :
+          min 326.24  max 1255.82
+t=14.3056,  Austenite: 0,  1,  Martensite: 0,  0.976408
+  -- Solve :
+          min 325.542  max 1253.87
+t=14.3577,  Austenite: 0,  1,  Martensite: 0,  0.976759
+  -- Solve :
+          min 324.87  max 1251.88
+t=14.41,  Austenite: 0,  1,  Martensite: 0,  0.977087
+  -- Solve :
+          min 324.222  max 1249.86
+t=14.4627,  Austenite: 0,  1,  Martensite: 0,  0.977393
+  -- Solve :
+          min 323.597  max 1247.79
+t=14.5156,  Austenite: 0,  1,  Martensite: 0,  0.977679
+  -- Solve :
+          min 322.994  max 1245.69
+t=14.5689,  Austenite: 0,  1,  Martensite: 0,  0.977946
+  -- Solve :
+          min 322.411  max 1243.56
+t=14.6225,  Austenite: 0,  1,  Martensite: 0,  0.978196
+  -- Solve :
+          min 321.849  max 1241.39
+t=14.6764,  Austenite: 0,  1,  Martensite: 0,  0.978428
+  -- Solve :
+          min 321.307  max 1239.18
+t=14.7306,  Austenite: 0,  1,  Martensite: 0,  0.978645
+  -- Solve :
+          min 320.785  max 1236.94
+t=14.7852,  Austenite: 0,  1,  Martensite: 0,  0.978847
+  -- Solve :
+          min 320.283  max 1234.67
+t=14.84,  Austenite: 0,  1,  Martensite: 0,  0.979035
+  -- Solve :
+          min 319.799  max 1232.36
+t=14.8952,  Austenite: 0,  1,  Martensite: 0,  0.979211
+  -- Solve :
+          min 319.334  max 1230.02
+t=14.9506,  Austenite: 0,  1,  Martensite: 0,  0.979374
+  -- Solve :
+          min 318.885  max 1227.66
+t=15.0064,  Austenite: 0,  1,  Martensite: 0,  0.979525
+  -- Solve :
+          min 318.453  max 1225.26
+t=15.0625,  Austenite: 0,  1,  Martensite: 0,  0.979666
+  -- Solve :
+          min 318.036  max 1222.83
+t=15.1189,  Austenite: 0,  1,  Martensite: 0,  0.979798
+  -- Solve :
+          min 317.634  max 1220.38
+t=15.1756,  Austenite: 0,  1,  Martensite: 0,  0.979919
+  -- Solve :
+          min 317.245  max 1217.9
+t=15.2327,  Austenite: 0,  1,  Martensite: 0,  0.980032
+  -- Solve :
+          min 316.871  max 1215.39
+t=15.29,  Austenite: 0,  1,  Martensite: 0,  0.980137
+  -- Solve :
+          min 316.51  max 1212.86
+t=15.3477,  Austenite: 0,  1,  Martensite: 0,  0.980234
+  -- Solve :
+          min 316.162  max 1210.3
+t=15.4056,  Austenite: 0,  1,  Martensite: 0,  0.980325
+  -- Solve :
+          min 315.826  max 1207.72
+t=15.4639,  Austenite: 0,  1,  Martensite: 0,  0.980408
+  -- Solve :
+          min 315.5  max 1205.12
+t=15.5225,  Austenite: 0,  1,  Martensite: 0,  0.980486
+  -- Solve :
+          min 315.183  max 1202.49
+t=15.5814,  Austenite: 0,  1,  Martensite: 0,  0.980557
+  -- Solve :
+          min 314.876  max 1199.85
+t=15.6406,  Austenite: 0,  1,  Martensite: 0,  0.980624
+  -- Solve :
+          min 314.578  max 1197.18
+t=15.7002,  Austenite: 0,  1,  Martensite: 0,  0.980682
+  -- Solve :
+          min 314.29  max 1194.5
+t=15.76,  Austenite: 0,  1,  Martensite: 0,  0.980737
+  -- Solve :
+          min 314.012  max 1191.79
+t=15.8202,  Austenite: 0,  1,  Martensite: 0,  0.980788
+  -- Solve :
+          min 313.746  max 1189.06
+t=15.8806,  Austenite: 0,  1,  Martensite: 0,  0.980835
+  -- Solve :
+          min 313.436  max 1186.31
+t=15.9414,  Austenite: 0,  1,  Martensite: 0,  0.980876
+  -- Solve :
+          min 313.017  max 1183.55
+t=16.0025,  Austenite: 0,  1,  Martensite: 0,  0.980913
+  -- Solve :
+          min 312.609  max 1180.76
+t=16.0639,  Austenite: 0,  1,  Martensite: 0,  0.980945
+  -- Solve :
+          min 312.213  max 1177.96
+t=16.1256,  Austenite: 0,  1,  Martensite: 0,  0.980973
+  -- Solve :
+          min 311.829  max 1175.13
+t=16.1877,  Austenite: 0,  1,  Martensite: 0,  0.980998
+  -- Solve :
+          min 311.455  max 1172.29
+t=16.25,  Austenite: 0,  1,  Martensite: 0,  0.98102
+  -- Solve :
+          min 311.093  max 1169.44
+t=16.3127,  Austenite: 0,  1,  Martensite: 0,  0.981039
+  -- Solve :
+          min 310.741  max 1166.57
+t=16.3756,  Austenite: 0,  1,  Martensite: 0,  0.981056
+  -- Solve :
+          min 310.398  max 1163.69
+t=16.4389,  Austenite: 0,  1,  Martensite: 0,  0.98107
+  -- Solve :
+          min 310.064  max 1160.79
+t=16.5025,  Austenite: 0,  1,  Martensite: 0,  0.981084
+  -- Solve :
+          min 309.738  max 1157.87
+t=16.5664,  Austenite: 0,  1,  Martensite: 0,  0.981096
+  -- Solve :
+          min 309.42  max 1154.94
+t=16.6306,  Austenite: 0,  1,  Martensite: 0,  0.981106
+  -- Solve :
+          min 309.111  max 1152
+t=16.6952,  Austenite: 0,  1,  Martensite: 0,  0.981116
+  -- Solve :
+          min 308.81  max 1149.46
+t=16.76,  Austenite: 0,  1,  Martensite: 0,  0.981124
+  -- Solve :
+          min 308.517  max 1147.4
+t=16.8252,  Austenite: 0,  1,  Martensite: 0,  0.981132
+  -- Solve :
+          min 308.233  max 1145.32
+t=16.8906,  Austenite: 0,  1,  Martensite: 0,  0.981138
+  -- Solve :
+          min 307.958  max 1143.23
+t=16.9564,  Austenite: 0,  1,  Martensite: 0,  0.981144
+  -- Solve :
+          min 307.692  max 1141.12
+t=17.0225,  Austenite: 0,  1,  Martensite: 0,  0.981149
+  -- Solve :
+          min 307.436  max 1139.08
+t=17.0889,  Austenite: 0,  1,  Martensite: 0,  0.981154
+  -- Solve :
+          min 307.189  max 1137.36
+t=17.1556,  Austenite: 0,  1,  Martensite: 0,  0.981158
+  -- Solve :
+          min 306.949  max 1135.63
+t=17.2227,  Austenite: 0,  1,  Martensite: 0,  0.981161
+  -- Solve :
+          min 306.717  max 1133.89
+t=17.29,  Austenite: 0,  1,  Martensite: 0,  0.981164
+  -- Solve :
+          min 306.492  max 1132.13
+t=17.3577,  Austenite: 0,  1,  Martensite: 0,  0.981167
+  -- Solve :
+          min 306.275  max 1130.35
+t=17.4256,  Austenite: 0,  1,  Martensite: 0,  0.981169
+  -- Solve :
+          min 306.065  max 1128.56
+t=17.4939,  Austenite: 0,  1,  Martensite: 0,  0.98117
+  -- Solve :
+          min 305.863  max 1126.75
+t=17.5625,  Austenite: 0,  1,  Martensite: 0,  0.981171
+  -- Solve :
+          min 305.668  max 1124.93
+t=17.6314,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 305.48  max 1123.1
+t=17.7006,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 305.3  max 1121.25
+t=17.7702,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 305.127  max 1119.39
+t=17.84,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.96  max 1117.51
+t=17.9102,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.8  max 1115.63
+t=17.9806,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.647  max 1113.72
+t=18.0514,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.499  max 1111.81
+t=18.1225,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.358  max 1109.89
+t=18.1939,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.222  max 1107.95
+t=18.2656,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 304.091  max 1106
+t=18.3377,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.964  max 1104.04
+t=18.41,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.842  max 1102.07
+t=18.4827,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.723  max 1100.08
+t=18.5556,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.606  max 1098.08
+t=18.6289,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.49  max 1096.08
+t=18.7025,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.377  max 1094.06
+t=18.7764,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.265  max 1092.03
+t=18.8506,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.157  max 1089.99
+t=18.9252,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.052  max 1087.93
+t=19,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.951  max 1085.87
+t=19.0752,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.855  max 1083.79
+t=19.1506,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.763  max 1081.7
+t=19.2264,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.677  max 1079.6
+t=19.3025,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.595  max 1077.49
+t=19.3789,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.519  max 1075.37
+t=19.4556,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.448  max 1073.23
+t=19.5327,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.381  max 1071.09
+t=19.61,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.32  max 1068.93
+t=19.6877,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.263  max 1066.76
+t=19.7656,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.211  max 1064.58
+t=19.8439,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.163  max 1062.39
+t=19.9225,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.12  max 1060.18
+t=20.0014,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.081  max 1057.97
+t=20.0806,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.046  max 1055.74
+t=20.1602,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.016  max 1053.51
+t=20.24,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.988  max 1051.26
+t=20.3202,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.964  max 1049.01
+t=20.4006,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.942  max 1046.74
+t=20.4814,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.922  max 1044.47
+t=20.5625,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.904  max 1042.19
+t=20.6439,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.888  max 1039.89
+t=20.7256,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.873  max 1037.59
+t=20.8077,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.86  max 1035.28
+t=20.89,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.848  max 1032.97
+t=20.9727,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.838  max 1030.64
+t=21.0556,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.828  max 1028.31
+t=21.1389,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.82  max 1025.98
+t=21.2225,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.813  max 1023.63
+t=21.3064,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.807  max 1021.33
+t=21.3906,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.803  max 1019.2
+t=21.4752,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.801  max 1017.06
+t=21.56,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.801  max 1014.91
+t=21.6452,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.803  max 1012.75
+t=21.7306,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.806  max 1010.58
+t=21.8164,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.812  max 1008.41
+t=21.9025,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.82  max 1006.22
+t=21.9889,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.83  max 1004.03
+t=22.0756,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.841  max 1001.83
+t=22.1627,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.855  max 999.62
+t=22.25,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.871  max 997.405
+t=22.3377,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.888  max 995.182
+t=22.4256,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.908  max 992.953
+t=22.5139,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.929  max 990.719
+t=22.6025,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.951  max 988.482
+t=22.6914,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 301.975  max 986.241
+t=22.7806,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.001  max 983.994
+t=22.8702,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.028  max 981.742
+t=22.96,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.057  max 979.484
+t=23.0502,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.086  max 977.221
+t=23.1406,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.117  max 974.951
+t=23.2314,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.149  max 972.676
+t=23.3225,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.182  max 970.395
+t=23.4139,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.217  max 968.108
+t=23.5056,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.252  max 965.816
+t=23.5977,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.288  max 963.52
+t=23.69,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.325  max 961.217
+t=23.7827,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.336  max 958.909
+t=23.8756,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.289  max 956.593
+t=23.9689,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.206  max 954.272
+t=24.0625,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.128  max 951.946
+t=24.1564,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.073  max 949.615
+t=24.2506,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.046  max 947.28
+t=24.3452,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.046  max 944.941
+t=24.44,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.071  max 942.599
+t=24.5352,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.116  max 940.253
+t=24.6306,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.176  max 937.904
+t=24.7264,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.248  max 935.553
+t=24.8225,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.329  max 933.199
+t=24.9189,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.415  max 930.842
+t=25.0156,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.505  max 928.483
+t=25.1127,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.597  max 926.122
+t=25.21,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.689  max 923.759
+t=25.3077,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.781  max 921.394
+t=25.4056,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.872  max 919.027
+t=25.5039,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 302.961  max 916.659
+t=25.6025,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.047  max 914.289
+t=25.7014,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.131  max 911.918
+t=25.8006,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.213  max 909.809
+t=25.9002,  Austenite: 0,  1,  Martensite: 0,  0.981172
+  -- Solve :
+          min 303.291  max 907.922
+t=26,  Austenite: 0,  1,  Martensite: 0,  0.981172
+version de medit ffmedit.exe -popen -filebin -addsol 1  Cooling:
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Cooling:
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  29.24
+ Thank you for using Medit.
+version de medit ffmedit.exe -popen -filebin -addsol 1  Cooling:
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Cooling:
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  3.35
+ Thank you for using Medit.
+version de medit ffmedit.exe -popen -filebin -addsol 1  Cooling:
+  -- Medit,  Release 3.0a (Nov. 30, 2007)
+     Copyright (c) LJLL, 1999-2007.
+     compiled:  mar. 12 mars 2019 18:42:29 (with ff++ 4.0).
+ 
+medit with binary version of popen : mesh(es) and solution(s)
+mesh_name= Cooling:
+ Loading data file(s)
+End of mesh
+.sol: Dimension 3 (mesh)3 (lecture)1
+  Input seconds:     0.04
+ 
+ medit1()
+ 
+ Building scene(s)
+  Creating scene 1
+   Loading default options
+  Scene seconds:     0.13
+ 
+ Rendering scene(s)
+ 
+ Total running seconds:  3.71
+ Thank you for using Medit.
+times: compile 2.078s, execution 537.453s,  mpirank:0
+ ######## We forget of deleting   -56 Nb pointer,   0Bytes  ,  mpirank 0, memory leak =0
+ CodeAlloc : nb ptr  6469,  size :520664 mpirank: 0
+Ok: Normal End
+ try getConsole C:\Users\Bruno\Desktop\Modelling Week\FreeFem++\coil-simulation-helical-gear.edp

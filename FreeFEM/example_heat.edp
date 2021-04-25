@@ -1,0 +1,56 @@
+// Heat equation with advection term
+
+border Gamma1(t = pi-pi/4,pi+pi/4) {x=cos(t);y=sin(t);label=1;}
+border Gamma2(t = pi+pi/4,3*pi-pi/4) {x=cos(t);y=sin(t);label=2;}
+border Gamma3(t = 0,2*pi) {x=0.3*cos(t);y=0.2*sin(t);}
+mesh Th = buildmesh(Gamma1(10)+Gamma2(40)+Gamma3(50));
+plot(Th);
+fespace Xh2(Th, P2); //Lagrange P2 elements
+fespace Xh0(Th, P0); //Lagrange P0 elements (piecewise constant)
+Xh0 kh;
+Xh2 uh2, vh2, wh2, F, G, H;
+
+func real f(real xx, real yy, real t) {
+	return 30*(xx^2+yy^2);
+}
+func real g(real xx, real yy, real t) {
+	return 273.15+100*t^2.0;
+}
+func real h(real xx, real yy, real t) {
+	return 0.0;
+}
+func uinitial = 273.15;
+
+real Tfinal = 3;
+int Mparts = 100;
+real deltat = Tfinal/Mparts;
+real deltat2 = 0.5*deltat;
+
+int Omega1=Th(0.9,0).region, Omega2=Th(0,0).region;
+real k1diffusion = 10.0;
+real k2diffusion = 0.1;
+func kdiffusion = (region==Omega1)*k1diffusion + (region==Omega2)*k2diffusion;
+
+kh = kdiffusion;
+plot(kh,wait=1);
+uh2 = uinitial;
+real a1=2.0; real a2=1.0; // (a1,a2) is the advection field
+
+plot(uh2,wait=0,fill=1,cmm="Initial condition",value=1);
+
+problem heat(wh2,vh2) = int2d(Th)(wh2*vh2)
+                      + int2d(Th)(deltat2*kh*(dx(wh2)*dx(vh2)+dy(wh2)*dy(vh2)))
+                      + int2d(Th)(deltat2*(a1*dx(wh2)+a2*dy(wh2))*vh2)
+                      - int2d(Th)(F*vh2)
+                      - int1d(Th,Gamma2)(deltat2*kh*H*vh2)
+                      + on(Gamma1,wh2=G);
+
+for (int j = 0; j < Mparts; j++) {
+	real time = j*deltat;
+	F = deltat2*0.5*(f(x,y,time)+f(x,y,time+deltat)) + uh2;
+	G = 0.5*(g(x,y,time)+g(x,y,time+deltat));
+	H = 0.5*(h(x,y,time)+h(x,y,time+deltat));
+	heat;
+	uh2 = 2*wh2-uh2;
+	plot(uh2,wait=0,fill=1,cmm="Heat problem: "+"t= "+(time+deltat),value=1);
+}

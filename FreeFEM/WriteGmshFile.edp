@@ -1,0 +1,379 @@
+/* ===================================================================== */
+/* Copyright (C) 2009, 2010 G. D. McBain -*- c++ -*-                     */
+/* Partially modified by J.M. Díaz, 2013  <josemanuel.diaz@uca.es>                               */
+/*                                                                       */
+/* Save a scalar solution in Gmsh .msh format.  The arguments are        */
+/* strings for the file and variable, the real array containing the      */
+/* variable (e.g. u[]), and the Gmsh element type (2 = TRI3, 4 = TET4,   */
+/* 9 = TRI6, 11 = TET10).                                                */
+/*                                                                       */
+/* Author: G. D. McBain <gdmcbain@freeshell.org>                         */ 
+/*                                                                       */
+/* Created: 2009-08-13?                                                  */
+/*                                                                       */
+/* Keywords: postprocessing, Gmsh                                        */
+/* ===================================================================== */
+
+
+/* ===================================================================== */
+/* GmshElmTyp() return the Gmsh element type number, inferred from the   */
+/*              number of degrees of freedom per element.                */
+/* ===================================================================== */
+
+func int GmshElmTyp (int n)
+{
+  int e;
+  if (n == 3) 
+  {		    
+    e = 2;            // TRI3
+  } 
+  else if (n == 4) 
+  {	
+    e = 4;            // TET4 
+  } 
+  else if (n == 6)
+  {	
+    e = 9;            // TRI6
+  } 
+  else if (n == 10) 
+  { 
+    e = 11;           // TET10   
+  }
+  else
+  {
+    cout << "Unknown element type, having " << n << "nodes!" << endl;
+    assert (false);	  // Shouldn't get here!
+  }
+  return e;    
+}
+
+
+/* ===================================================================== */
+/* En() Return a one-dimensional array of permutation of the nodes of an */
+/*      element for output to Gmsh, for Gmsh element type t.             */
+/* ===================================================================== */
+
+func int[int] Permutation(int t) 
+{
+  int[int] ndofK = [0, 0, 3, 0, 4, 0, 0, 0, 0, 6, 0, 10];
+  int[int] r(ndofK[t]);
+
+  if (t == 2) 
+  {		
+    r = [0, 1, 2];                         // 3-node triangle
+  } 
+  else if (t == 4) 
+  {
+    r = [0, 1, 2, 3];                      // 4-node tetrahedron
+  } 
+  else if (t == 9) 
+  {	
+	r = [0, 1, 2, 5, 3, 4];                // 6-node triangle
+  } 
+  else if (t == 11) 
+  {	
+	r = [0, 1, 2, 3, 4, 7, 5, 6, 9, 8];    // 10-node tetrahedron
+  } 
+  else
+  {
+    cout << "Unknown element type: " << t << "!" << endl;
+    assert (false);	                      // Shouldn't get here!
+  }
+  return r;
+}
+
+
+// writemsh: Write the (scalar) finite element field u (of fespace
+// type Vh) with name s (e.g. "temperature" or "concentration") to a
+// file filename in Gmsh .msh format.
+// writemshdata: Write to ofstream ff the scalar finite element field
+// u with name s at step it and time t as type "Node" for P1 or P2, or
+// "Element" for P0.  (TODO: Try and detect P0 data automatically.)
+
+
+macro WriteGmshFile(filename, s, u, Th, Vh) 
+{
+
+  /* Open filename for write */
+   
+  ofstream ff (filename);
+  
+  /* Write header of .mesh file format */
+  
+  {
+    ff << "$MeshFormat" << endl;
+    ff << "2.1 0 8" << endl;
+    ff << "$EndMeshFormat" << endl;
+  }
+
+  /* Write Nodes */
+
+  {
+    Vh[int] xh(3);		
+    xh[0] = x;
+    xh[1] = y;
+    xh[2] = z;
+
+    ff << "$Nodes" << endl;
+    ff << Vh.ndof << endl;
+	
+    for (int n = 0; n < Vh.ndof; n++) 
+	{
+      ff << n+1		
+         << "  " << xh[0][][n]
+	     << "  " << xh[1][][n]
+	     << "  " << xh[2][][n];
+	  ff << endl;
+    }
+  }
+
+  /* Write Elements */
+  
+  {
+    int elmtyp = GmshElmTyp(Vh.ndofK);
+    int[int] np = En(elmtyp);
+
+    ff << "$Elements" << endl;
+    ff << Vh.nt << endl;
+    for (int e = 0; e < Vh.nt; e++) 
+	{
+      ff << e+1 << "  "		
+	     << elmtyp << "  "	
+	     << "2  " 		
+	     << Th[e].label << "  "	
+	     << Th[e].region;	
+      
+	  for (int n = 0; n < Vh.ndofK; n++)
+	  {
+	    ff << "  " << Vh (e, np[n]) + 1;
+	  }
+      ff << endl;
+    }
+	
+    ff << "$EndElements" << endl;
+  }
+
+  /* Write Data */
+  
+  {
+    ff << "$" + "Node" + "Data" << endl
+       << "1" << endl		
+       << "\"" << s << "\"" << endl
+       << "1" << endl		
+       << 0.0 << endl		
+       << "3" << endl		
+       << 0 << endl		
+       << "1" << endl		
+       << u.n << endl;
+	   
+    for (int n = 0; n < u.n; n++)
+	{
+      ff << n+1 << "  " << u[n] << endl;
+	}
+  
+    ff << "$End" + "Node" + "Data" << endl; 
+  }
+ 
+}  // EOM
+
+
+
+
+
+// Copyright (C) 2009, 2010 G. D. McBain -*- c++ -*-
+
+// Save a scalar solution in Gmsh .msh format.  The arguments are
+// strings for the file and variable, the real array containing the
+// variable (e.g. u[]), and the Gmsh element type (2 = TRI3, 4 = TET4,
+// 9 = TRI6, 11 = TET10).
+
+// Author: G. D. McBain <gdmcbain@freeshell.org>
+
+// Created: 2009-08-13?
+
+// Keywords: postprocessing, Gmsh
+
+
+
+
+
+
+func int[int] En (int t)
+{
+
+  int[int] ndofK = [0, 0, 3, 0, 4, 0, 0, 0, 0, 6, 0, 10];
+  int[int] r(ndofK[t]);
+
+  if (t == 2) 
+  {		
+    r = [0, 1, 2];   // 3-node triangle
+  } 
+  else 
+  {
+    if (t == 4) 
+	{	
+      r = [0, 1, 2, 3];  // 4-node tetrahedron
+    } 
+	else 
+	{
+      if (t == 9) 
+	  {	
+	    r = [0, 1, 2, 5, 3, 4]; // 6-node triangle
+      } 
+	  else 
+	  {
+	    if (t == 11) 
+		{	
+	      r = [0, 1, 2, 3, 4, 7, 5, 6, 9, 8]; // 10-node tetrahedron
+	    } 
+		else 
+		{
+	      cout << "Unknown element type: " << t << "!" << endl;
+	      assert (false);	// Shouldn't get here!
+	    }
+      }
+    }
+  }
+  return r;
+}
+
+
+/* ===================================================================== */
+// writemshdata: Write to ofstream ff the scalar finite element field
+// u with name s at step it and time t as type "Node" for P1 or P2, or
+// "Element" for P0.  (TODO: Try and detect P0 data automatically.)
+
+
+macro writemshdata (ff, s, u, it, t, type) 
+{
+  ff << "$" + type + "Data" << endl
+     << "1" << endl		
+     << "\"" << s << "\"" << endl
+     << "1" << endl		
+     << t << endl		
+     << "3" << endl		
+     << it << endl		
+     << "1" << endl		
+     << u.n << endl;	
+  for (int n = 0; n < u.n; n++)
+    ff << n+1 << "  " << u[n] << endl;
+  ff << "$End" + type + "Data" << endl;
+}//
+
+// writemsh: Write the (scalar) finite element field u (of fespace
+// type Vh) with name s (e.g. "temperature" or "concentration") to a
+// file filename in Gmsh .msh format.
+
+macro WriteGmsh (filename, s, u, Th, Vh) 
+{
+  
+  /* Open filename for write */
+  
+  ofstream ff (filename);
+
+  /* Write header of .mesh file format */
+  
+  {
+    ff << "$MeshFormat" << endl;
+    ff << "2.1 0 8" << endl;
+    ff << "$EndMeshFormat" << endl;
+  }
+ 
+  /*  Write Nodes */
+  
+  {
+    Vh[int] xh(3);
+	
+    xh[0] = x;
+    xh[1] = y;
+    xh[2] = z;
+
+    ff << "$Nodes" << endl;
+    ff << Vh.ndof << endl;
+	
+    for (int n = 0; n < Vh.ndof; n++) 
+	{
+      ff << n+1		
+         << "  " << xh[0][][n]
+	     << "  " << xh[1][][n]
+	     << "  " << xh[2][][n];
+	  ff << endl;
+    }
+	
+    ff << "$EndNodes" << endl;
+  }
+
+  /* Write Elements */
+  
+  {
+    int elmtyp = GmshElmTyp (Vh.ndofK);
+    int[int] np = En (elmtyp);
+
+    ff << "$Elements" << endl;
+    ff << Vh.nt << endl;
+	
+    for (int e = 0; e < Vh.nt; e++) 
+	{
+      ff << e+1 << "  "	
+	     << elmtyp << "  "	
+	     << "2  " 		
+	     << Th[e].label << "  "	
+	     << Th[e].region;	
+		 
+      for (int n = 0; n < Vh.ndofK; n++)
+	  {	
+	    ff << "  " << Vh (e, np[n]) + 1;
+	  }
+	  
+      ff << endl;
+    }
+    ff << "$EndElements" << endl;
+  }
+ 
+  /* Write Data */
+  
+  {
+    ff << "$" + "Node + "Data" << endl
+       << "1" << endl		
+       << "\"" << s << "\"" << endl
+       << "1" << endl		
+       << 0.0 << endl		
+       << "3" << endl		
+       << 0 << endl		
+       << "1" << endl		
+       << u.n << endl;	
+  
+    for (int n = 0; n < u.n; n++)
+	{
+      ff << n+1 << "  " << u[n] << endl;
+	}
+   
+    ff << "$End" + "Node" + "Data" << endl;
+  }
+
+}//
+
+// membrane.edp -*- c++ -*-
+
+// adapted from Section 3.1 of the FreeFem++ manual to export to Gmsh
+
+/*
+real theta = 4.*pi/3.;
+real a = 2., b = 1.; // the length of the semimajor axis and semiminor axis
+func z = x;
+border Gamma1 (t = 0, theta)     { x = a * cos(t); y = b*sin(t); }
+border Gamma2 (t = theta, 2 * pi) { x = a * cos(t); y = b*sin(t); }
+mesh Th = buildmesh (Gamma1 (100) + Gamma2 (50));
+fespace Vh (Th, P2);		//    P2 conforming triangular FEM
+Vh phi, w, f = 1;
+solve Laplace (phi, w) = 
+  int2d (Th) (dx (phi) * dx (w) + dy (phi) * dy (w))
+  - int2d (Th) (f*w) + on (Gamma1, phi = z);
+// plot(phi,wait=true, ps="membrane.eps");	 //   Plot phi
+// plot(Th,wait=true, ps="membraneTh.eps"); //   Plot Th
+// savemesh(Th,"Th.msh");
+
+include "writemsh.edp"
+writemsh ("membrane.msh", "deflexion", phi[], Th, Vh);
+*/
+

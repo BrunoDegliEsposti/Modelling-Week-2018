@@ -1,0 +1,28 @@
+border Gamma1(t = pi-pi/4,pi+pi/4) {x=cos(t);y=sin(t);label=1;}
+border Gamma2(t = pi+pi/4,3*pi-pi/4) {x=cos(t);y=sin(t);label=2;}
+border Gamma3(t = 0,2*pi) {x=0.3*cos(t);y=0.2*sin(t);}
+mesh Th = buildmesh(Gamma1(10)+Gamma2(40)+Gamma3(50));
+plot(Th);
+fespace Xh1(Th, P1); //Lagrange P1 elements
+fespace Xh2(Th, P2); //Lagrange P2 elements
+Xh1 uh1, vh1;        //Xh1 is a type
+Xh2 uh2, vh2;
+real alpha = 2.0;
+real beta = 5.0;
+func f = 3*x+y;
+func g = x^2;
+func H = y^3;
+problem a1(uh1,vh1) = int2d(Th)(alpha*uh1*vh1)
+                    + int2d(Th)(beta*(dx(uh1)*dx(vh1)+dy(uh1)*dy(vh1)))
+                    - int2d(Th)(f*vh1)
+                    - int1d(Th,Gamma2)(H*vh1)
+                    + on(uh1=g);
+problem a2(uh2,vh2) = int2d(Th)(alpha*uh2*vh2)
+                    + int2d(Th)(beta*(dx(uh2)*dx(vh2)+dy(uh2)*dy(vh2)))
+                    - int2d(Th)(f*vh2)
+                    - int1d(Th,Gamma2)(H*vh2)
+                    + on(uh2=g);
+a1; //Solve problem a1. Now uh1 contains the solution.
+plot(uh1,wait=1,fill=1,cmm="Elliptic problem",value=1,dim=3);
+a2; //Solve problem a2. Now uh2 contains the solution.
+plot(uh2,wait=1);

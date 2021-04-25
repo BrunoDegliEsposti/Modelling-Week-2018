@@ -1,0 +1,43 @@
+-- FreeFem++ v  4.100000 (date mar.  9 avr. 2019 13:55:28)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : border Gamma1(t = pi-pi/4,pi+pi/4) {x=cos(t);y=sin(t);label=1;}
+    2 : border Gamma2(t = pi+pi/4,3*pi-pi/4) {x=cos(t);y=sin(t);label=2;}
+    3 : border Gamma3(t = 0,2*pi) {x=0.3*cos(t);y=0.2*sin(t);}
+    4 : mesh Th = buildmesh(Gamma1(10)+Gamma2(40)+Gamma3(50));
+    5 : plot(Th);
+    6 : fespace Xh1(Th, P1); //Lagrange P1 elements
+    7 : fespace Xh2(Th, P2); //Lagrange P2 elements
+    8 : Xh1 uh1, vh1;        //Xh1 is a type
+    9 : Xh2 uh2, vh2;
+   10 : real alpha = 2.0;
+   11 : real beta = 5.0;
+   12 : func f = 3*x+y;
+   13 : func g = x^2;
+   14 : func H = y^3;
+   15 : problem a1(uh1,vh1) = int2d(Th)(alpha*uh1*vh1)
+   16 :                     + int2d(Th)(beta*(dx(uh1)*dx(vh1)+dy(uh1)*dy(vh1)))
+   17 :                     - int2d(Th)(f*vh1)
+   18 :                     - int1d(Th,Gamma2)(H*vh1)
+   19 :                     + on(uh1=g);Problem : ----------------------------- 504 dim = 2 0x41eb2c0
+ 
+   20 : problem a2(uh2,vh2) = int2d(Th)(alpha*uh2*vh2)
+   21 :                     + int2d(Th)(beta*(dx(uh2)*dx(vh2)+dy(uh2)*dy(vh2)))
+   22 :                     - int2d(Th)(f*vh2)
+   23 :                     - int1d(Th,Gamma2)(H*vh2)
+   24 :                     + on(uh2=g);Problem : ----------------------------- 1680 dim = 2 0x421c6f0
+ 
+   25 : a1; //Solve problem a1. Now uh1 contains the solution.
+   26 : plot(uh1,wait=1,fill=1,cmm="Elliptic problem",value=1,dim=3);
+   27 : a2; //Solve problem a2. Now uh2 contains the solution.
+   28 : plot(uh2,wait=1); sizestack + 1024 =3880  ( 2856 )
+ 
+  --  mesh:  Nb of Triangles =   1492, Nb of Vertices 772
+  -- Solve :
+          min -0.219268  max 0.223428
+  -- Solve :
+          min -0.219282  max 0.223412
+times: compile 0.065s, execution 0.132s,  mpirank:0
+ ######## We forget of deleting   -2 Nb pointer,   0Bytes  ,  mpirank 0, memory leak =0
+ CodeAlloc : nb ptr  3282,  size :428024 mpirank: 0
+Ok: Normal End
+ try getConsole C:\Users\Bruno\Desktop\Modelling Week\FreeFem++\example_elliptic.edp

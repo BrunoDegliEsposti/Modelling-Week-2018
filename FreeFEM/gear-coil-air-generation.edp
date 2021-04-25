@@ -1,0 +1,198 @@
+// mesh generation: gear, coil and surrounding air
+// https://www.youtube.com/watch?v=b8Ptfw39ea4
+
+load "msh3"
+load "tetgen"
+load "medit"
+
+//The gear radius (cm)
+real radius = 0.2;
+int numteeth = 20;// number of teeth
+real toothheight = radius/8.;
+
+// Gap factor between the coil and the gear: 1.05
+real separationfactor = 1.05;
+
+//The inner gear cylinder has 
+//radius = radiusportion*radius
+real radiusportion = 0.7;
+
+//Outer radius factor for the coil
+//real fradiusextcoil = 20.;
+real fradiusextcoil = 8.;
+
+// Half of the gear thickness (cm)
+real thickness = 0.04;
+
+//Number of points in the tooth boundary
+int npteeth = 350; 
+
+// Number of points in the inner ring
+int npinnerring = 30;
+
+//Number of points in the two arcs of the coil
+int npacoil = 120; 
+
+//Number of layers in the 3D mesh of the gear and coil
+int nlayer = 7; 
+
+// Truncated teeth by 20% up and down
+func real tooth(real t){return 
+    min(0.8*toothheight,
+     max(-0.8*toothheight,
+//      toothheight*cos(numteeth*t+pi)));}
+      toothheight*cos(numteeth*t)));}
+
+func real coronax(real t){return
+       (radius + tooth(t))*cos(t);}
+func real coronay(real t){return
+       (radius + tooth(t))*sin(t);}
+
+border dentadura(t=0,2*pi){
+	x=coronax(t);
+	y=coronay(t);label=123;}
+border circle1(t=0,2*pi){
+	x=radiusportion*radius*cos(t);
+    y=radiusportion*radius*sin(t);}
+
+//plot(dentadura(npteeth) + circle1(npinnerring));
+
+mesh Th=buildmesh(dentadura(npteeth) + 
+           circle1(-npinnerring),fixeborder=1);
+
+//plot(Th,ps="gearbase.eps");
+
+int[int] labels = [0,76];
+mesh3 Thbase = movemesh23(Th,
+       transfo=[x,y,-thickness],
+       label=labels);
+labels = [0,77];
+mesh3 Thtapa = movemesh23(Th,
+       transfo=[x,y,thickness],
+       label=labels);
+
+//Inner wall
+real x0=0., x1=2.*pi, 
+     y0=-thickness, y1=thickness;
+mesh Thauxi = 
+      square(npinnerring,nlayer,
+      [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+func XX3 = radiusportion*radius*cos(x);
+func YY3 = radiusportion*radius*sin(x);
+func ZZ2 = y;
+labels = [0,79];
+mesh3 Thlaterali = movemesh23(Thauxi,
+    transfo=[XX3,YY3,ZZ2],
+    label=labels);
+
+//mesh3 Thprogress = Thbase + Thlaterali + Thtapa;
+//savemesh(Thprogress,"boundaryprogress.mesh");
+
+// Interactive call for MEdit
+//medit("Boundary progress", Thprogress);
+
+// Cylindrical Wall on the teeth
+mesh Thauxe = 
+  square(npteeth,nlayer,
+   [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+func XX4 = coronax(x);
+func YY4 = coronay(x);
+labels = [0,78];
+mesh3 Thlateralo =
+   movemesh23(Thauxe,
+    transfo=[XX4,YY4,y],
+    label=labels);
+savemesh(Thlateralo,"toothwall-2019.mesh");
+
+//The full gear skin
+mesh3 GearSkin = 
+    Thbase + Thtapa 
+    + Thlaterali + Thlateralo;
+savemesh(GearSkin,"gearskin-2019.mesh");
+
+//3D gear mesh (tetrahedra)
+real[int] domain = 
+  [1.05*radiusportion*radius,
+    0.,0.,145,0.1];
+mesh3 ThGear3 = 
+  tetg(GearSkin,
+   switch="paAAQY",
+   nbofregions=1,
+   regionlist=domain);
+
+savemesh(ThGear3,"straightgear-2019.mesh");
+
+//The helical twist
+func XX5 =  cos(2*z)*x + sin(2*z)*y;
+func YY5 = -sin(2*z)*x + cos(2*z)*y;
+
+mesh3 ThGear = 
+  movemesh3(ThGear3,
+    transfo=[XX5,YY5,z]);
+
+//medit("Helical Gear", ThGear); 
+
+savemesh(ThGear,"gear-2019.mesh"); // We save the mesh
+
+//Inductor // Coil
+real estrechez=0.01; // Mitad del angulo de separacion de la apertura del inductor // Half of the gap angle
+
+real innercoilradius = separationfactor*(radius+toothheight);
+real outercoilradius = (separationfactor+fradiusextcoil*toothheight)*(radius+toothheight);
+
+x0= innercoilradius*cos(estrechez);
+y0= innercoilradius*sin(estrechez);
+x1= outercoilradius*cos(estrechez);
+y1= outercoilradius*sin(estrechez);
+
+real x2,y2,x3,y3;
+x2= innercoilradius*cos(2*pi-estrechez);
+y2= innercoilradius*sin(2*pi-estrechez);
+x3= outercoilradius*cos(2*pi-estrechez);
+y3= outercoilradius*sin(2*pi-estrechez);
+
+border coil1(t=0,1){x=(1-t)*x0+t*x1;y=(1-t)*y0+t*y1;label=35;};
+border outerarc(t=estrechez,2*pi-estrechez){x=outercoilradius*cos(t);y=outercoilradius*sin(t);}
+
+border coil2(t=0,1){x=(1-t)*x3+t*x2;y=(1-t)*y3+t*y2;label=85;};
+border innerarc(t=-estrechez,estrechez-2*pi){x=innercoilradius*cos(t);y=innercoilradius*sin(t);}
+
+// inner lines:
+border innerarcaux22(t=2*estrechez,2*pi-2*estrechez){x=(innercoilradius+outercoilradius)*0.5*cos(t); 
+ y=(innercoilradius+outercoilradius)*0.5*sin(t);}
+border innerarcaux13(t=2*estrechez,2*pi-2*estrechez){x=(3*innercoilradius+outercoilradius)*0.25*cos(t); 
+ y=(3*innercoilradius+outercoilradius)*0.25*sin(t);}
+border innerarcaux31(t=2*estrechez,2*pi-2*estrechez){x=(innercoilradius+3*outercoilradius)*0.25*cos(t); 
+ y=(innercoilradius+3*outercoilradius)*0.25*sin(t);}
+
+mesh coilh=buildmesh(coil1(8)+outerarc(npacoil)+coil2(8)+innerarc(npacoil)
+ +innerarcaux13(npacoil)+innerarcaux22(npacoil)+innerarcaux31(npacoil));
+
+//plot(Th,coilh,wait=1);
+
+mesh3 coilh3=buildlayers(coilh, nlayer, zbound=[-1.2*thickness,1.2*thickness]);
+// medit("Coil",coilh3);
+
+savemesh(coilh3,"coil-2019.mesh");
+
+//////////////////////////////////
+//// Aire
+//////////////////////////////////
+
+ include "cubo.edp"
+ 
+// int[int] NN=[7,7,7]; // the number of steps in each direction
+ int[int] NN=[10,10,10]; // the number of steps in each direction
+// real [int,int] BB=[[-0.6,0.6],[-0.6,0.6],[-0.6,0.6]]; // bounding box
+ real [int,int] BB=[[-2.2,2.2],[-2.2,2.2],[-2.2,2.2]]; // bounding box
+ int [int,int] L=[[10,20],[30,40],[50,60]]; // the label of the 6 faces left,right,
+ // front, back, down, right
+ 
+ mesh3 Thcube=Cube(NN,BB,L) + ThGear + coilh3;
+  
+ //domain = [radio,0.,thickness,145,0.01,4,0.,0.,155,0.1];  // 145=corona, 155=aire
+ domain = [0.5*(radiusportion+1)*radius,0.,0.,145,0.001,0,0.5*(innercoilradius+outercoilradius),0,135,0.01,0.,0.,0.,155,0.1]; // 135=inductor
+// domain = [radio2toro,0.,0.,135,0.04,1.05*porcionradio*radio,0.,0.,145,0.04,0.,0.,0.,155,0.2];
+ mesh3 Thcoilsteelair = tetg(Thcube,switch="paAAQY",nbofregions=3,regionlist=domain);
+
+savemesh(Thcoilsteelair,"coilsteelair-2019.mesh");

@@ -1,0 +1,79 @@
+
+// Valores criticos de la temperatura para la conductividad electrica
+real tempcritica0 = 298.;
+real tempcritica1 = 470.;
+real tempcritica2 = 672.;
+real tempcritica3 = 850.;
+
+// Coeficientes de los polinomios que sirven para aproximar la conductividad electrica
+real coef01 = 1.2047173737217676*10^7, coef11 = -30167.896720105175, coef21 = 26.18741034731349;
+real coef02 = 1.010982623048548*10^7,  coef12 = -18857.409223299666, coef22 = 10.892790081281841;
+real coef03 = 1.1614622547014464*10^7, coef13 = -19379.53765153729, coef23 =  8.33750465763241;
+real coef04 = 6.638206702244068, coef14 = 1.2135745034567888*10^2.,
+     coef24 = -3.794330496486601*10, coef34 = 5.528833365316495, coef00 = 10^8;
+
+
+     
+func real polinter1(real temp){return coef01 + (coef11 + coef21*temp)*temp ;}
+func real polinter2(real temp){return coef02 + (coef12 + coef22*temp)*temp ;}
+func real polinter3(real temp){return coef03 + (coef13 + coef23*temp)*temp ;}
+func real polinter4(real temp){real tempaux = temp/1000.; return coef04 + tempaux*(coef14 + tempaux*(coef24 + tempaux*coef34)) ;}
+
+real conducelec0 = polinter1(tempcritica0);
+
+/*f
+unc real conductividadelectrica(real temp){ 
+	return (temp < tempcritica0)*conducelec0 
+         + (tempcritica0 <= temp)*(temp < tempcritica1)*polinter1(temp)
+         + (tempcritica1 <= temp)*(temp < tempcritica2)*polinter2(temp)
+         + (tempcritica2 <= temp)*(temp < tempcritica3)*polinter3(temp)
+         + (tempcritica3 <= temp)*coef00/polinter4(temp) 
+              ;}
+*/  
+            
+//paco
+real tempcritica4 = 1200.;
+real coef44 = coef00/polinter4(tempcritica4);
+func real conductividadelectrica(real temp){ 
+	return (temp < tempcritica0)*conducelec0 
+         + (tempcritica0 <= temp)*(temp < tempcritica1)*polinter1(temp)
+         + (tempcritica1 <= temp)*(temp < tempcritica2)*polinter2(temp)
+         + (tempcritica2 <= temp)*(temp < tempcritica3)*polinter3(temp)
+         + (tempcritica3 <= temp)*(temp < tempcritica4)*coef00/polinter4(temp)
+         + (tempcritica4 <= temp)*coef44*exp(-(temp-tempcritica4)*0.016)
+              ;}
+
+{// Crear archivos si/no
+bool grabarsino = 0;
+if (grabarsino){
+ // Crea un archivo para usar con gnuplot       
+real sigmamin = 744., sigmamax= 6.e+06;
+{ ofstream ficheroF("./conducelecb.plt");
+ ficheroF << "# Fichero que para dibujar una grafica leyendo un archivo"<<endl;
+ ficheroF << "set xlabel \"temperatura\" 2"<<endl;
+ ficheroF << "set ylabel \"condutividad electrica acero\" 2"<<endl;
+ ficheroF << "pause .1"<<endl;
+ ficheroF << "set title \"condutividad electrica acero\""<<endl;
+ ficheroF << "plot [] ["<<sigmamin<<":"<<sigmamax<<"] \"conducelecb.dat\" with lines linewidth 1"<<endl;}
+
+ // Crea el archivo conducelecb.dat         
+ { ofstream ficheroF("./conducelecb.dat");
+     for (real j=200;j<=2000;j+=1.){
+//	     cout << j << "  " << endl;
+          ficheroF << j<<"  "<< conductividadelectrica(j)<<endl;
+ //        ficheroF << "{"+j+","+polinter4(1.*j)+"},";
+          }
+  }
+
+
+//  Crea un archivo para usar con ListPlot[]         
+// { ofstream ficheroF("./conducelecb.txt");
+//     ficheroF << "{";
+//     for (int j=290;j<1700;j++){
+// 	     cout << j << polinter4(j) << endl;
+//          ficheroF << "{"+j+","+conductividadelectrica(j)+"},";
+//         ficheroF << "{"+j+","+polinter4(1.*j)+"},";
+//          }
+//     ficheroF << "{"+1700.+","+conductividadelectrica(1700.)+"}";
+//     ficheroF << "}";}
+}}

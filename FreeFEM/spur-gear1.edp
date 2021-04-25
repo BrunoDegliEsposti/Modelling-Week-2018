@@ -1,0 +1,26 @@
+real radius = 0.2; // Outer radius
+real radiusPortion = 0.7;
+real innerRadius = radius * radiusPortion;
+int numTeeth = 20;
+real toothHeight = radius/8.0;
+func real tooth(real t) {
+	return toothHeight*max(-0.8, min(0.8, cos(numTeeth*t)));
+}
+func real coronax(real t) {
+	return (radius+tooth(t))*cos(t);
+}
+func real coronay(real t) {
+	return (radius+tooth(t))*sin(t);
+}
+border dentadura(t = 0,2*pi) {
+	x = coronax(t);
+	y = coronay(t);
+	label=123;
+}
+border circle1(t = 0,2*pi) {
+	x = innerRadius * cos(t);
+	y = innerRadius * sin(t);
+}
+mesh Th = buildmesh(dentadura(400)+circle1(-20),fixeborder=1); //fixeborder means that the border will be shared
+int[int] labels = [0,76];
+mesh3 Thbase = movemesh23(Th, transfo=[x,y,thickness], label=labels);

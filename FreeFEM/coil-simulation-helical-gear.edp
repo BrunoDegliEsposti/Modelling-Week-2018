@@ -1,0 +1,303 @@
+load "msh3"
+load "medit"
+include "WriteGmshFile.edp"
+
+include "conductividadelectrica.edp" // conductividad variable
+
+mesh3 Th3corona=readmesh3("gear-2019.mesh");
+
+// int Dcorona = 145; 
+
+real radio = 0.2;
+real porcionradio = 0.7;
+real alturadiente = radio/8.;
+
+// Four points in the gear to evaluate the temperature at each one
+real[int] XX(4);
+for (int j=0; j<=3; ++j)
+{ XX[j]= radio*(1-1./6.)+ j*radio*7./72;
+  cout << "XX("<<j<<")= "<< XX[j]<<endl;}//YY[j]=0=ZZ(j).
+
+int Dcorona = Th3corona(0.5*(porcionradio+1)*radio,0.,0.).region; 
+
+cout << "Dcorona = 145 ? " << Dcorona << endl;
+
+fespace Th1(Th3corona,P13d);
+Th1 Joule; // Termino fuente 
+
+{ifstream ff("precomputed-joule-effect-coefficients.txt");
+   ff >> Joule[];}
+
+
+
+///////////////////////////////////////////////////////?////////////////////////////////////////? 
+//CONSTANTES DEL MODELO
+///////////////////////////////////////////////////////?////////////////////////////////////////?
+
+//Conductividad eléctrica
+real sigma1=5.35367e+06;//Conductividad eléctrica en Omega1 (pieza de acero)
+Joule = Joule / sigma1;
+//func sigma2=5.96e7;//Conductividad eléctrica en Omega2 (inductor de cobre)
+//func sigma3=0.;//Conductividad eléctrica en Omega3 (aire)
+
+//Para asegurar la unicidad de solución de la ecuación de phi por la condición de Neumann
+//real epsilon=1.e-10;
+
+//real frecuencia = 900;//Frecuencia del generador
+//real omega=2*pi*frecuencia;//Pulsación o frecuencia angular
+
+real rho=7.653e3;//Density of steel
+real calorespecifico=5.54e2;// Specific heat of steel
+real aconductermica=34.28;//Conductividad térmica de la barra // Diffusion of steel
+real alpha = 6.6e3;	 // Transfer coefficient
+//real uaqua=273+42.; // Aquaquenching Temperature    
+real uaqua=273+45.; // Aquaquenching Temperature    
+
+
+//real rhocobre=8.96e3;//Densidad del cobre kg/m^3
+//real ccobre=3.85e2;//Calor específico del cobre Julios/(kg.ºK)
+//real acobre=389.6;//Conductividad términa del cobre Julio/(s.m.ºC)
+
+//////////////////////////////////////////////////?////////////////////////////////////////? 
+// //PARA LAS ITERACIONES EN TIEMPO
+//sreal Tiempo=5.5;//Duración del proceso de calentamiento // Final heating stage time
+real Tc=10.;//Duración del proceso de calentamiento // Final heating stage time
+real tcierto = 0.; // se usa durante el enfriamiento con paso variable
+real Tfinal = Tc + 16;  // Final cooling stage time	
+ 
+int Niteraciones=200;//Nmero de iteraciones en tiempo
+real dt=Tc/Niteraciones;//Paso en tiempo //Time step
+//////////////////////////////////////////////////?////////////////////////////////////////?
+
+
+  // Definicion de las constantes segun el acero
+  
+  real As=730.+273;
+  real cm=1.4;
+  real Ms=360.+273;
+  
+  
+  // Definiendo el calor de latencia
+  
+  real Latencia=8.2e4;
+  
+  // Definiendo las funciones que intervienen en la evolucin de la austenita
+  
+  
+  // Funcin temporal, a determinar segn el acero 
+  
+  func real ta(real temp)
+  {
+ return 
+ 1*(temp<=1003.)+
+ (1.-0.008*(-1003.+temp))*(1003.<temp && temp<=1103.)+
+ (0.2-0.00214286*(-1103.+temp))*(1103.<temp && temp<=1173.)+
+ 0.05*(temp>1173);
+  }
+  
+
+  // Funcin de "equilibrio" para la austenita, a determinar segn el acero
+  
+  func real aeq(real temp)
+  {
+ return
+ (1./110*(-1003.+temp))*(1003.<temp && temp<=1113.)+1.*(temp>1113);
+  }
+  
+  // Funciones que determinan la evolucin de las fases austenita y martensita en el sistema (donde la temperatura entra como dato)
+  // 
+  //                                       a'=1/ta(temp)*(aeq(temp)-a)*(temp-1003>=0)-m'; 
+  //                                       m'=1.4*(1-m)*(633-temp>=0)*(-temp'>0);
+  //
+  // Definimos fa(t,a)=1/ta(temp(t))*(aeq(temp(t))-a)*(temp-1003>=0)
+  //           fm(t,m)=cm*(1-m)*(633-temp>=0)
+  // y dejamos pendiente el acoplamiento y la funcin de signo sobre la variacin de la temperatura para ser introducidos en el bucle de programacin, cuando iteremos.
+  
+  real deltaheavy = .25;
+  func real heavydelta(real t){
+ return (t>deltaheavy)*((t-deltaheavy)/deltaheavy*(t<2*deltaheavy)+(t>=2*deltaheavy));}
+  
+  func real fm(real temp, real austen, real martens,  real temp1)
+  {
+ return cm*austen*(Ms-temp>0)*heavydelta(temp1-temp);
+  }
+  func real fa(real temp, real a, real martens, real temp1)
+  {
+ return max((aeq(temp)-a)/ta(temp),0.)*(temp-As>0)-fm(temp,a,martens,temp1);
+  }
+  
+  
+  // Las funciones austenita y martensita para que entren en el problema variacional se declaran como funciones de malla
+  
+  //  Inicializamos el problema de las fases
+    
+  Th1 aa0=0., aa=aa0;
+  Th1 m0=0., mm=m0;  
+  Th1 mmm;
+  
+  Th1 FF11, FF12;
+  Th1 FFF11, FFF12;
+  Th1 U,UU,W;
+  
+  Th1 fmm, fmmm, faa, faaa;
+   
+ /////////////////////////////////////////////////////////////?////////////////////////////////////////?    
+ 
+//  fespace Th2(Th,P2);
+  Th1 u, uu, w, u0, v, Source;
+   
+  real rho0=rho;
+  real c0=calorespecifico;
+  real a0=aconductermica;
+  real dtm = 0.5*dt;
+  
+  u0 = 300.; // Initial temperature = room temperature
+  u = u0;
+  uu = u;
+
+func real pasoc(real t){t^2/Tc;} // paso variable en tiempo para la etapa de calentamiento
+
+  problem heatingup(w,v) = int3d(Th3corona)(rho0*c0*w*v 
+          + dtm*a0*(dx(w)*dx(v) + dy(w)*dy(v) +dz(w)*dz(v)))
+          - int3d(Th3corona)(Source*v);
+  
+int kpower = 0;
+real ausMin, ausMax, marMin, marMax;
+real dtn;
+
+real[int] Level=[1160,1165,1170,1175,1180,1700];//temperatures values to reduce the Joule term
+int iLevel=0;
+//real[int] reduction=[0.95,0.9,0.85,0.7,0.5,0.5];//Joule reduction
+real[int] reduction=[0.5,0.3,0.2,0.15,0.15,0.1];//Joule reduction
+
+// Generation of files (Y/N) to be read from gnuplot:
+//we save the temperatures at four different points of a tooth
+bool grabarsino = 1;
+if (grabarsino){
+ // We first generate a main gnuplot file     
+//real tempmin = 290, tempmax= 1350;
+{ ofstream filetemp("./temperatures4.plt");
+ filetemp << "# This file generates a plot of the temperature, at four different points inside the gear, by reading four files: temp1.dat, temp2.dat, temp3.dat and temp4.dat"<<endl;
+ filetemp << "set xlabel \"Time (seconds)\" "<<endl;
+ filetemp << "set ylabel \"Temperature (Kelvin)\" "<<endl;
+ filetemp << "pause .1"<<endl;
+ filetemp << "set title \"Evolution of temperature at four points inside the gear\""<<endl;
+ filetemp << "plot ["<<0<<":"<<Tfinal<<"] [290:1350] \"temp1.dat\" with lines linewidth 1, \"temp2.dat\" with lines linewidth 1, \"temp3.dat\" with lines linewidth 1, \"temp4.dat\" with lines linewidth 1 "<<endl;}
+}
+
+// Open the four files temp1.dat,...,temp4.dat:        
+ofstream filetemp1("./temp1.dat");
+ofstream filetemp2("./temp2.dat");
+ofstream filetemp3("./temp3.dat");
+ofstream filetemp4("./temp4.dat");
+
+   for(real t=0;t<=Tc;t+=dt)
+ {	dtn = pasoc(t+dt)-pasoc(t); //paso variable durante el enfriamiento
+    tcierto +=dtn;
+ 
+  	faa  = fa(u,aa,       mm,uu);
+ 	  faaa = fa(u,aa+dt*faa,mm,uu);
+	  aa=aa+0.5*dtn*(faa+faaa);
+    aa=max(min(aa,1.),0.); // truncamiento de austenita a la altura 1.
+   
+   Source = 0.5*dtn*(Joule*0.5*(conductividadelectrica(u)+conductividadelectrica(uu))
+            - 0.5*rho0*Latencia*(faa+faaa)) + rho0*c0*u;
+ 
+   heatingup;
+   uu = u;
+   u = 2*w - u;
+ 	
+ 	           
+  	ausMin = aa[].min;
+ 	ausMax = aa[].max;
+ 	cout<<"t="<<tcierto<<",  Austenite: "<<ausMin<<",  "<<ausMax<<endl;
+    	if (u[].max > Level[iLevel]) {
+        Joule = Joule*reduction[iLevel];
+ 	   	iLevel = min(iLevel +1,Level.n -1);
+ 	   	cout << "Power reduction no. "<< iLevel<<
+ 	   	", Joule*reduction("<<iLevel<<")= "<<reduction[iLevel] <<endl;
+    	}
+/*
+    	if (u[].max > 1490.) {
+ 	   	kpower = kpower +1;
+// 	   	Joule = .95*Joule;
+ 	   	cout << "Power reduction no. "<< kpower <<endl;} 
+*/
+ 
+if (abs(tcierto-7.)<0.09) {medit("Austenite-t=7", Th3corona, aa, order=1);}
+if (abs(tcierto-9.)<0.09) {medit("Austenite-t=10", Th3corona, aa, order=1);}
+
+if (grabarsino){
+   filetemp1 << tcierto<<"  "<< u(XX[0],0.,0.)<<endl;
+   filetemp2 << tcierto<<"  "<< u(XX[1],0.,0.)<<endl;
+   filetemp3 << tcierto<<"  "<< u(XX[2],0.,0.)<<endl;
+   filetemp4 << tcierto<<"  "<< u(XX[3],0.,0.)<<endl;
+   }
+}
+medit("Heating: Final Temperature", Th3corona, u, order=1);
+medit("Heating: Final Austenite", Th3corona, aa, order=1);
+
+WriteGmshFile("induccion-temperature10-2019.msh", "Heating: Final Temperature", u[], Th3corona, Th1); 
+WriteGmshFile("induccion-austenite10-2019.msh", "Heating: Final Austenite", aa[], Th3corona, Th1); 
+
+problem coolingdown(w,v) = int3d(Th3corona)( rho0*c0*w*v 
+          + dtn*a0*(dx(w)*dx(v) + dy(w)*dy(v) +dz(w)*dz(v)))
+          + int2d(Th3corona,76,77,78,79)(dtn*alpha*w*v)
+          - int2d(Th3corona,76,77,78,79)(dtn*alpha*uaqua*v)
+          - int3d(Th3corona)(Source*v);
+  
+func real pasocooling(real t){(t-Tc)^2/(Tfinal-Tc);} // paso variable en tiempo para la etapa de enfriamiento
+    tcierto = Tc;
+
+   for(real t=Tc;t<=Tfinal;t+=dt)
+ {	dtn = pasocooling(t+dt)-pasocooling(t); //paso variable durante el enfriamiento
+    tcierto +=dtn;
+    
+  	faa  = fa(u,aa,       mm,uu);
+ 	faaa = fa(u,aa+dtn*faa,mm,uu);
+	
+	aa=aa+0.5*dtn*(faa+faaa);
+    aa=max(min(aa,1.),0.); // truncamiento de austenita a la altura 1.
+
+  	fmm  = fm(u,aa,mm,       uu);
+ 	fmmm = fm(u,aa,mm+dtn*fmm,uu);
+	
+	mm=mm+0.5*dtn*(fmm+fmmm);
+    mm=max(min(mm,1.),0.); // martensite truncation at height 1.
+
+   dtn = 0.5*dtn;
+   Source = -0.5*dtn*rho0*Latencia*(faa+faaa + fmm+fmmm) + rho0*c0*u;
+ 
+   coolingdown;
+   uu = u;
+   u = 2*w - u;
+ 	           
+  	ausMin = aa[].min;
+ 	ausMax = aa[].max;
+  	marMin = mm[].min;
+ 	marMax = mm[].max;
+ 	cout<<"t="<<tcierto<<",  Austenite: "<<ausMin<<",  "<<ausMax<<",  Martensite: "<<marMin<<",  "<<marMax<<endl;
+ 	
+if (grabarsino){
+   filetemp1 << tcierto<<"  "<< u(XX[0],0.,0.)<<endl;
+   filetemp2 << tcierto<<"  "<< u(XX[1],0.,0.)<<endl;
+   filetemp3 << tcierto<<"  "<< u(XX[2],0.,0.)<<endl;
+   filetemp4 << tcierto<<"  "<< u(XX[3],0.,0.)<<endl;
+   }
+}
+
+medit("Cooling: Final Temperature", Th3corona, u, order=1);
+medit("Cooling: Final Austenite", Th3corona, aa, order=1);
+medit("Cooling: Final Martensite", Th3corona, mm, order=1);
+
+WriteGmshFile("induccion-temperature26-2019.msh", "Heating: Final Temperature", u[], Th3corona, Th1); 
+WriteGmshFile("induccion-austenite26-2019.msh", "Heating: Final Austenite", aa[], Th3corona, Th1); 
+WriteGmshFile("induccion-martensite26-2019.msh", "Heating: Final Martensite", mm[], Th3corona, Th1); 
+
+
+  
+  
+  
+  
+  
+  

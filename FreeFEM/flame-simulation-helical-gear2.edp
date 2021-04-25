@@ -1,0 +1,135 @@
+load "msh3"
+load "medit"
+include "WriteGmshFile.edp" 
+
+include "conductividadelectrica.edp" // conductividad variable
+
+mesh3 Th3corona=readmesh3("gear-2019.mesh");
+
+//medit("Heating: Final Temperature", Th3corona);
+
+real rho=7.653e3;//Density of steel
+real calorespecifico=5.54e2;// Specific heat of steel
+real aconductermica=34.28;//Thermal conductividad of steel 
+
+ // Some steel contants
+  
+  real As=730.+273;
+  real cm=1.4;
+  real Ms=360.+273;
+    
+  real Latencia=8.2e4;//Latent heat
+  
+//Numerical simulation
+
+func uinitial = 300.;
+real Tc=6.;
+int Mparts=100;
+real dt=Tc/Mparts;
+real dtn;
+
+fespace Vh(Th3corona,P1);
+
+Vh u, vh, wh, uu, flamet;
+
+func real flame(real tt){real alfa=1.; 
+	return 300.+90.*alfa*tt/(1.+alfa*tt);
+	//Dirichlet boundary condition 
+                //on the tooth surface
+                         }
+uu = uinitial; //U^{n}-> uu
+u = uu;        //U^{n+1}->u
+
+  // Funcion temporal, a determinar segun el acero 
+  
+ func real ta(real temp)
+  {
+ return 
+ 1*(temp<=1003.)+
+ (1.-0.008*(-1003.+temp))*(1003.<temp && temp<=1103.)+
+ (0.2-0.00214286*(-1103.+temp))*(1103.<temp && temp<=1173.)+
+ 0.05*(temp>1173);
+  }
+   
+
+  // Funcion de "equilibrio" para la austenita, a determinar segn el acero
+  
+  func real aeq(real temp)
+  {
+ return
+ (1./110*(-1003.+temp))*(1003.<temp && temp<=1113.)+1.*(temp>1113);
+  }
+    
+  real deltaheavy = .25;
+  func real heavydelta(real t){
+ return (t>deltaheavy)*((t-deltaheavy)/deltaheavy*(t<2*deltaheavy)+(t>=2*deltaheavy));}
+  
+  func real fm(real temp, real austen, real martens,  real temp1)
+  {
+ return cm*austen*(Ms-temp>0)*heavydelta(temp1-temp);
+  }
+  func real fa(real temp, real a, real martens, real temp1)
+  {
+ return max((aeq(temp)-a)/ta(temp),0.)*(temp-As>0)-fm(temp,a,martens,temp1);
+  }
+  
+  
+  // Las funciones austenita y martensita para que entren en el problema variacional se declaran como funciones de malla
+  
+  //  Initialization of the phase fractions
+    
+  Vh aa0=0., aa=aa0;
+  Vh m0=0., mm=m0, mmm;  
+  Vh Source;
+    
+  Vh fmm, fmmm, faa, faaa;
+   
+ //////////////////////////////////////////////////////
+func real pasoc(real t){t^2/Tc;} // paso variable en tiempo para la etapa de calentamiento
+
+problem heat(wh,vh,solver=CG,eps=1e-20)= 
+   int3d(Th3corona)(rho*calorespecifico*wh*vh)
+   +int3d(Th3corona)(0.5*dtn*aconductermica
+    *(dx(wh)*dx(vh)+dy(wh)*dy(vh)+dz(wh)*dz(vh)))
+  -int3d(Th3corona)(Source*vh) + on(78,wh=flamet);
+
+real tcertain=0.;
+
+for (int j=0; j<Mparts; ++j)
+   {real time=j*dt;
+	dtn = pasoc(time+dt)-pasoc(time); //paso variable 
+    tcertain +=dtn;
+  
+  	faa  = fa(u,aa,       mm,uu);
+ 	faaa = fa(u,aa+dtn*faa,mm,uu);
+	aa=aa+0.5*dtn*(faa+faaa);
+    aa=max(min(aa,1.),0.); //truncation of the austenite 
+                           //at height 1 and base 0.
+    real ausMin = aa[].min;
+ 	real ausMax = aa[].max;
+ 	cout<<"t="<<tcertain<<
+ 	      ",  Austenite: "<<ausMin<<",  "<<ausMax<<endl;
+
+   Source = -0.5*dtn*0.5*rho*Latencia*(faa+faaa) 
+            + rho*calorespecifico*uu;
+   flamet = 0.5*(flame(tcertain)+flame(tcertain-dtn));
+   
+   heat;
+   uu = u;
+   u = 2.*wh - uu;
+  	cout<<"Temperature min:"<<uu[].min<<
+  	      ", Temperature max:"<<uu[].max<<endl;
+
+  
+/*   if (abs(tcertain-2.5)<0.09) {medit("Austenite-t=2.5", Th3corona, aa, order=1);}
+   if (abs(tcertain-4.5)<0.09) {medit("Austenite-t=4.5", Th3corona, aa, order=1);}*/
+	}
+
+medit("Heating: Final Temperature", Th3corona, uu, order=1);
+medit("Heating: Final Austenite", Th3corona, aa, order=1);
+
+
+WriteGmshFile("flame-temperature7-2019.msh", "Heating: Final Temperature", uu[], Th3corona, Vh); 
+//WriteGmshFile("flame-austenite10-2019.msh", "Heating: Final Austenite", aa[], Th3corona, Vh); 
+
+

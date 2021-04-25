@@ -1,0 +1,134 @@
+
+load "msh3"
+load "tetgen"
+load "medit"
+
+//The gear radius (cm)
+real radius = 0.2;
+int numteeth = 20;// number of teeth
+real toothheight = radius/8.;
+
+// Gap factor between the coil and the gear: 1.05
+real separationfactor = 1.05;
+
+//The inner gear cylinder has 
+//radius = radiusportion*radius
+real radiusportion = 0.7;
+
+//Outer radius factor for the coil
+//real fradiusextcoil = 20.;
+real fradiusextcoil = 8.;
+
+// Half of the gear thickness (cm)
+real thickness = 0.15;
+
+//Number of points in the tooth boundary
+int npteeth = 350; 
+
+// Number of points in the inner ring
+int npinnerring = 30;
+
+//Number of points in the two arcs of the coil
+int npacoil = 120; 
+
+//Number of layers in the 3D mesh of the gear and coil
+int nlayer = 25; 
+
+// Truncated teeth by 20% up and down
+func real tooth(real t){return 
+    min(0.8*toothheight,
+     max(-0.8*toothheight,
+//      toothheight*cos(numteeth*t+pi)));}
+      toothheight*cos(numteeth*t)));}
+
+func real coronax(real t){return
+       (radius + tooth(t))*cos(t);}
+func real coronay(real t){return
+       (radius + tooth(t))*sin(t);}
+
+border dentadura(t=0,2*pi){
+	x=coronax(t);
+	y=coronay(t);label=123;}
+border circle1(t=0,2*pi){
+	x=radiusportion*radius*cos(t);
+    y=radiusportion*radius*sin(t);}
+
+//plot(dentadura(npteeth) + circle1(npinnerring));
+
+mesh Th=buildmesh(dentadura(npteeth) + 
+           circle1(-npinnerring),fixeborder=1);
+
+//plot(Th,ps="gearbase.eps");
+
+int[int] labels = [0,76];
+mesh3 Thbase = movemesh23(Th,
+       transfo=[x,y,-thickness],
+       label=labels);
+labels = [0,77];
+mesh3 Thtapa = movemesh23(Th,
+       transfo=[x,y,thickness],
+       label=labels);
+
+//Inner wall
+real x0=0., x1=2.*pi, 
+     y0=-thickness, y1=thickness;
+mesh Thauxi = 
+      square(npinnerring,nlayer,
+      [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+func XX3 = radiusportion*radius*cos(x);
+func YY3 = radiusportion*radius*sin(x);
+func ZZ2 = y;
+labels = [0,79];
+mesh3 Thlaterali = movemesh23(Thauxi,
+    transfo=[XX3,YY3,ZZ2],
+    label=labels);
+
+mesh3 Thprogress = Thbase + Thlaterali + Thtapa;
+//savemesh(Thprogress,"boundaryprogress.mesh");
+
+// Interactive call for MEdit
+//medit("Boundary progress", Thprogress);
+
+// Cylindrical Wall on the teeth
+mesh Thauxe = 
+  square(npteeth,nlayer,
+   [x0+(x1-x0)*x,y0+(y1-y0)*y]);
+func XX4 = coronax(x);
+func YY4 = coronay(x);
+labels = [0,78];
+mesh3 Thlateralo =
+   movemesh23(Thauxe,
+    transfo=[XX4,YY4,y],
+    label=labels);
+//savemesh(Thlateralo,"toothwall-2019.mesh");
+//medit("Toothwall", Thlateralo);
+
+//The full gear skin
+mesh3 GearSkin = 
+    Thbase + Thtapa 
+    + Thlaterali + Thlateralo;
+savemesh(GearSkin,"pinion_skin.mesh");
+
+//3D gear mesh (tetrahedra)
+real[int] domain = 
+  [1.05*radiusportion*radius,
+    0.,0.,145,0.1];
+mesh3 ThGear3 = 
+  tetg(GearSkin,
+   switch="paAAQY",
+   nbofregions=1,
+   regionlist=domain);
+
+//savemesh(ThGear3,"spur-gear-2019.mesh");
+
+//The helical twist
+func XX5 =  cos(2*z)*x + sin(2*z)*y;
+func YY5 = -sin(2*z)*x + cos(2*z)*y;
+
+mesh3 ThGear = 
+  movemesh3(ThGear3,
+    transfo=[XX5,YY5,z]);
+
+medit("Helical Gear", ThGear); 
+
+savemesh(ThGear,"pinion.mesh"); // We save the mesh
